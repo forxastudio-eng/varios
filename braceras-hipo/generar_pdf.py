@@ -1,1274 +1,963 @@
-"""Genera el PDF de patrones + tutorial de las braceras de Hipo (EVA 5 mm, A4)."""
+"""Genera el PDF completo (patrones + tutorial) y el PDF de guías A4 de las braceras de Hipo."""
 import math
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import geom as G
-from shapely import affinity
-from shapely.geometry import LineString
-from reportlab.lib import colors
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfgen import canvas
-from reportlab.platypus import Paragraph, Table, TableStyle
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import geom as G  # noqa: E402
+from dibujo import *  # noqa: E402,F401,F403
+from dibujo import (ACCENT, BROWN, COL, CM, CREAM, DARK, GRAYT, GUIDE, LEATHER, LINE, PH, PW, ST, WARM,  # noqa: E402
+                    box, bullets, callout, checklist, chrome, draw_arm, draw_bracer, draw_line, draw_poly, draw_section,
+                    f1, f2, fig_bevel, fig_cut, fig_dagger, fig_heat, fig_hinge, fig_mold, fig_ring, fig_row, fig_slot, para,
+                    path_pts, steps_block, table, text)
+from reportlab.lib import colors  # noqa: E402
+from reportlab.pdfgen import canvas  # noqa: E402
+from reportlab.platypus import Paragraph  # noqa: E402
+from shapely import affinity  # noqa: E402
+from shapely.geometry import LineString, Polygon, box as sbox  # noqa: E402
+from shapely.ops import unary_union  # noqa: E402
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Braceras_Hipo_Patrones_y_Tutorial.pdf")
+OUT = os.path.join(HERE, "Braceras_Hipo_Patrones_y_Tutorial.pdf")
+OUT_PRINT = os.path.join(HERE, "Braceras_Hipo_Guias_A4_imprimir.pdf")
+TOTAL = 18
 
-# ------------------------------------------------------------------ fuentes
-FD = "/usr/share/fonts/truetype/liberation/"
-pdfmetrics.registerFont(TTFont("LS", FD + "LiberationSans-Regular.ttf"))
-pdfmetrics.registerFont(TTFont("LS-B", FD + "LiberationSans-Bold.ttf"))
-pdfmetrics.registerFont(TTFont("LS-I", FD + "LiberationSans-Italic.ttf"))
-pdfmetrics.registerFont(TTFont("LS-BI", FD + "LiberationSans-BoldItalic.ttf"))
-pdfmetrics.registerFontFamily("LS", normal="LS", bold="LS-B", italic="LS-I", boldItalic="LS-BI")
-
-CM = 28.3465
-BROWN = colors.HexColor("#7B4A2A")
-LEATHER = colors.HexColor("#A9744A")
-DARK = colors.HexColor("#2B2B2B")
-ACCENT = colors.HexColor("#C8782E")
-CREAM = colors.HexColor("#F6EFE6")
-GRAYT = colors.HexColor("#6B6B6B")
-GUIDE = colors.HexColor("#3A78B5")
-STEEL = colors.HexColor("#B8B8BC")
-
-PW, PH = 21.0, 29.7   # retrato (cm)
-TOTAL_PAGES = 13
+SL = {y: G.strap_lengths(y) for y in G.STRAP_Y}
+PANEL_TOP_W = G.R_at(G.PANEL_Y1, G.T) * G.panel_angle()
+PANEL_BOT_W = G.R_at(G.PANEL_Y0, G.T) * G.panel_angle()
 
 
-def f1(v):
-    return f"{v:.1f}".replace(".", ",")
+def sz(p):
+    w, h = G.size(p)
+    return f"{f1(w)} × {f1(h)}"
 
 
-def f2(v):
-    return f"{v:.2f}".replace(".", ",")
+# ================================================================== MAQUETACIÓN DE LAS HOJAS
+def layout_p1():
+    b = G.base()
+    w, h = G.size(b)
+    return {"BASE": G.at(b, (G.PAGE_W - w) / 2, 0.65)}
 
 
-C = G.C
-R1, R2, TH = G.R1, G.R2, G.THETA
-
-# ------------------------------------------------------------------ estilos
-ST = {
-    "b": ParagraphStyle("b", fontName="LS", fontSize=9, leading=12.3, textColor=DARK),
-    "s": ParagraphStyle("s", fontName="LS", fontSize=8, leading=10.6, textColor=DARK),
-    "xs": ParagraphStyle("xs", fontName="LS", fontSize=7.2, leading=9.2, textColor=GRAYT),
-    "h2": ParagraphStyle("h2", fontName="LS-B", fontSize=12, leading=15, textColor=BROWN, spaceBefore=0),
-    "h3": ParagraphStyle("h3", fontName="LS-B", fontSize=9.6, leading=12.5, textColor=BROWN),
-    "cell": ParagraphStyle("cell", fontName="LS", fontSize=8, leading=10.2, textColor=DARK),
-    "cellb": ParagraphStyle("cellb", fontName="LS-B", fontSize=8, leading=10.2, textColor=DARK),
-    "th": ParagraphStyle("th", fontName="LS-B", fontSize=8, leading=10, textColor=colors.white),
-    "bul": ParagraphStyle("bul", fontName="LS", fontSize=9, leading=12.3, textColor=DARK, leftIndent=11, bulletIndent=1),
-    "buls": ParagraphStyle("buls", fontName="LS", fontSize=8, leading=10.6, textColor=DARK, leftIndent=10, bulletIndent=1),
-    "step": ParagraphStyle("step", fontName="LS", fontSize=10.2, leading=14.4, textColor=DARK, leftIndent=0),
-    "center": ParagraphStyle("center", fontName="LS", fontSize=9, leading=12, textColor=DARK, alignment=1),
-}
-
-
-def para(c, text, x, ytop, w, style="b"):
-    p = Paragraph(text, ST[style] if isinstance(style, str) else style)
-    _, h = p.wrap(w * CM, 1000)
-    p.drawOn(c, x * CM, ytop * CM - h)
-    return ytop - h / CM
-
-
-def table(c, data, x, ytop, colw, header=True, zebra=True, pad=3):
-    rows = []
-    for i, r in enumerate(data):
-        row = []
-        for j, cell in enumerate(r):
-            if isinstance(cell, str):
-                st = "th" if (header and i == 0) else ("cellb" if j == 0 else "cell")
-                row.append(Paragraph(cell, ST[st]))
-            else:
-                row.append(cell)
-        rows.append(row)
-    t = Table(rows, colWidths=[w * CM for w in colw])
-    style = [
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D9CBB8")),
-        ("TOPPADDING", (0, 0), (-1, -1), pad),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), pad),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ]
-    if header:
-        style.append(("BACKGROUND", (0, 0), (-1, 0), BROWN))
-    if zebra:
-        for i in range(1 if header else 0, len(rows)):
-            if i % 2 == 0:
-                style.append(("BACKGROUND", (0, i), (-1, i), CREAM))
-    t.setStyle(TableStyle(style))
-    _, h = t.wrap(sum(colw) * CM, 1000)
-    t.drawOn(c, x * CM, ytop * CM - h)
-    return ytop - h / CM
+def layout_p2():
+    it = {}
+    pn = G.panel()
+    pw, ph = G.size(pn)
+    it["P.izq"] = G.at(pn, 0.9, G.CONTENT_TOP - ph - 0.05)
+    it["P.der"] = G.at(pn, 0.9 + pw + 0.55, G.CONTENT_TOP - ph - 0.05)
+    # cinchas centrales
+    rows = [("B1c", SL[G.STRAP_Y[0]]["central"], "B1c·daga", SL[G.STRAP_Y[0]]["central_daga"]),
+            ("B2c", SL[G.STRAP_Y[1]]["central"], "B2c·daga", SL[G.STRAP_Y[1]]["central_daga"]),
+            ("B3c", SL[G.STRAP_Y[2]]["central"], "B3c ", SL[G.STRAP_Y[2]]["central"])]
+    y = 0.8
+    for k1, l1, k2, l2 in reversed(rows):
+        it[k1] = G.at(G.strap(l1), 0.9, y)
+        it[k2] = G.at(G.strap(l2), 0.9 + l1 + 0.5, y)
+        y += G.STRAP_W + 0.45
+    # daga
+    x0 = 0.9 + 2 * pw + 0.55 + 0.6
+    top = G.CONTENT_TOP - 0.05
+    sb, scv = G.sheath_base(), G.sheath_cover()
+    it["G1"] = G.at(sb, x0, top - G.size(sb)[1])
+    it["G2"] = G.at(scv, it["G1"].bounds[2] + 0.45, top - G.size(scv)[1])
+    gx = it["G2"].bounds[2] + 0.45
+    it["H1.1"] = G.at(G.grip(), gx, top - 4.4)
+    it["H1.2"] = G.at(G.grip(), gx, top - 2 * 4.4 - 0.45)
+    it["H2.1"] = G.at(G.crossguard(), x0, it["G1"].bounds[1] - 0.5 - 0.8)
+    it["H2.2"] = G.at(G.crossguard(), x0, it["H2.1"].bounds[1] - 0.45 - 0.8)
+    it["H3.1"] = G.at(G.pommel(), x0 + 3.45, it["H1.2"].bounds[1] - 0.45 - 1.3)
+    it["H3.2"] = G.at(G.pommel(), x0 + 3.45 + 1.75, it["H1.2"].bounds[1] - 0.45 - 1.3)
+    return it
 
 
-def box(c, x, y, w, h, fill=CREAM, stroke=colors.HexColor("#D9CBB8"), r=0.2):
-    c.setFillColor(fill)
-    c.setStrokeColor(stroke)
-    c.setLineWidth(0.6)
-    c.roundRect(x * CM, y * CM, w * CM, h * CM, r * CM, stroke=1, fill=1)
+def layout_p3():
+    it = {}
+    rows = [[("B1p", "lateral", 0), ("B3p", "lateral", 2), ("B3a", "medial", 2)],
+            [("B1p", "lateral", 0), ("B3p", "lateral", 2), ("B3a", "medial", 2)],
+            [("B2p", "lateral", 1), ("B1a", "medial", 0), ("B1a", "medial", 0)],
+            [("B2p", "lateral", 1), ("B2a", "medial", 1), ("B2a", "medial", 1)]]
+    y = 0.8
+    count = {}
+    for row in rows:
+        x = 0.9
+        for name, kind, k in row:
+            ln = SL[G.STRAP_Y[k]][kind]
+            count[name] = count.get(name, 0) + 1
+            it[f"{name}.{count[name]}"] = G.at(G.strap(ln, tip=(kind == "lateral")), x, y)
+            x += ln + 0.35
+        y += G.STRAP_W + 0.42
+    cf = G.cuff()
+    c1 = G.at(cf, 0.9, G.CONTENT_TOP - G.size(cf)[1] - 0.05)
+    it["PUÑO.1"] = c1
+    it["PUÑO.2"] = affinity.translate(c1, 0, -(G.CUFF_Y1 - G.CUFF_Y0) - 0.45)
+    return it
 
 
-def text(c, s, x, y, size=8, font="LS", color=DARK, align="l", rot=0):
-    c.saveState()
-    c.setFillColor(color)
-    c.setFont(font, size)
-    c.translate(x * CM, y * CM)
-    if rot:
-        c.rotate(rot)
-    if align == "c":
-        c.drawCentredString(0, 0, s)
-    elif align == "r":
-        c.drawRightString(0, 0, s)
-    else:
-        c.drawString(0, 0, s)
-    c.restoreState()
+def layout_p4():
+    g = G.guard_plate()
+    w, h = G.size(g)
+    y = G.CONTENT_TOP - h - 0.05
+    return {"GA.1": G.at(g, 0.9, y), "GA.2": G.at(g, 0.9 + w + 0.6, y)}
 
 
-def chrome(c, n, part, title):
-    """Cabecera y pie de las páginas de texto (retrato)."""
-    c.setFillColor(BROWN)
-    c.rect(0, (PH - 1.35) * CM, PW * CM, 1.35 * CM, stroke=0, fill=1)
-    c.setFillColor(ACCENT)
-    c.rect(0, (PH - 1.45) * CM, PW * CM, 0.1 * CM, stroke=0, fill=1)
-    text(c, title, 1.6, PH - 0.88, 13, "LS-B", colors.white)
-    text(c, part, PW - 1.6, PH - 0.88, 8.5, "LS", colors.HexColor("#F0DCC4"), "r")
-    c.setStrokeColor(colors.HexColor("#D9CBB8"))
-    c.setLineWidth(0.5)
-    c.line(1.6 * CM, 1.35 * CM, (PW - 1.6) * CM, 1.35 * CM)
-    text(c, "Braceras de Hipo · goma EVA 5 mm · talla de referencia 1,75 m", 1.6, 0.85, 7.5, "LS", GRAYT)
-    text(c, f"{n} / {TOTAL_PAGES}", PW - 1.6, 0.85, 7.5, "LS-B", GRAYT, "r")
+def layout_p5():
+    b = G.guard_seg_base()
+    w, h = G.size(b)
+    y = G.CONTENT_TOP - h - 0.05
+    it = {"GB.1": G.at(b, 0.9, y), "GB.2": G.at(b, 0.9 + w + 0.6, y)}
+    bd = G.guard_band()
+    bw, bh = G.size(bd)
+    x = 0.9 + 2 * w + 1.2
+    it["BANDA.1"] = G.at(bd, x, G.CONTENT_TOP - bh - 0.05)
+    it["BANDA.2"] = G.at(bd, x, G.CONTENT_TOP - 2 * bh - 0.5)
+    return it
 
 
-# ------------------------------------------------------------------ dibujo helpers
-def draw_poly(c, poly, fill=None, stroke=DARK, lw=1.0, dash=None, ox=0.0, oy=0.0):
-    p = c.beginPath()
-    pts = list(poly.exterior.coords)
-    p.moveTo((pts[0][0] + ox) * CM, (pts[0][1] + oy) * CM)
-    for x, y in pts[1:]:
-        p.lineTo((x + ox) * CM, (y + oy) * CM)
-    p.close()
-    c.saveState()
-    c.setLineWidth(lw)
-    if dash:
-        c.setDash(list(dash))
-    if fill is not None:
-        c.setFillColor(fill)
-    c.setStrokeColor(stroke)
-    c.drawPath(p, stroke=1 if stroke is not None else 0, fill=1 if fill is not None else 0)
-    c.restoreState()
+def layout_p6():
+    it = {}
+    x = 0.9
+    for rep in (1, 2):
+        for i in range(4):
+            s = G.guard_strip(i)
+            w, h = G.size(s)
+            it[f"L{i + 1}.{rep}"] = G.at(s, x, G.CONTENT_TOP - h - 0.05)
+            x += w + 0.45
+    return it
 
 
-def draw_line(c, pts, color=GUIDE, lw=0.8, dash=(3, 2), ox=0.0, oy=0.0):
-    c.saveState()
-    c.setStrokeColor(color)
-    c.setLineWidth(lw)
-    if dash:
-        c.setDash(list(dash))
-    p = c.beginPath()
-    p.moveTo((pts[0][0] + ox) * CM, (pts[0][1] + oy) * CM)
-    for x, y in pts[1:]:
-        p.lineTo((x + ox) * CM, (y + oy) * CM)
-    c.drawPath(p, stroke=1, fill=0)
-    c.restoreState()
-
-
-def arc_line(r, a0, a1, n=80):
-    return G.arc_pts(r, a0, a1, n)
-
-
-# ================================================================== elevación esquemática
-COL = dict(body=colors.HexColor("#7B4A2A"), rim=colors.HexColor("#A9744A"), cuff=colors.HexColor("#2B2B2B"),
-           strap=colors.HexColor("#1E1E1E"), plate=colors.HexColor("#8A5530"), sheath=colors.HexColor("#4A4A4D"),
-           grip=colors.HexColor("#5A3820"), metal=STEEL)
-LAYERS = ["body", "rim", "cuff", "straps", "plate", "dagger"]
-BODY_H = 17.4
-
-
-def hw_body(s):
-    return 4.65 - 1.3 * s / BODY_H
-
-
-def draw_bracer(c, ox, oy, sc, upto=6, hl=None, ghost=False):
-    """Vista frontal esquemática. (ox,oy) en cm: eje del brazal, borde superior; sc = factor (1 = tamaño real)."""
-
-    def P(x, s):
-        return ((ox + x * sc), (oy - s * sc))
-
-    def poly(pts, fill, stroke=DARK, lw=0.5, hlite=False):
-        p = c.beginPath()
-        for i, (x, s) in enumerate(pts):
-            X, Y = P(x, s)
-            (p.moveTo if i == 0 else p.lineTo)(X * CM, Y * CM)
-        p.close()
-        c.saveState()
-        c.setFillColor(fill)
-        c.setStrokeColor(ACCENT if hlite else stroke)
-        c.setLineWidth(2.2 if hlite else lw)
-        c.drawPath(p, stroke=1, fill=1)
-        c.restoreState()
-
-    def active(name):
-        return LAYERS.index(name) < upto
-
-    def is_hl(name):
-        return hl == name
-
-    if active("body"):
-        poly([(-hw_body(0), 0), (hw_body(0), 0), (hw_body(BODY_H), BODY_H), (-hw_body(BODY_H), BODY_H)],
-             COL["body"], hlite=is_hl("body"))
-    if active("rim"):
-        for s0, s1 in ((0, 1.0), (BODY_H - 1.0, BODY_H)):
-            poly([(-hw_body(s0), s0), (hw_body(s0), s0), (hw_body(s1), s1), (-hw_body(s1), s1)],
-                 COL["rim"], hlite=is_hl("rim"))
-    if active("cuff"):
-        poly([(-hw_body(BODY_H), BODY_H), (hw_body(BODY_H), BODY_H), (3.0, BODY_H + 3), (-3.0, BODY_H + 3)],
-             COL["cuff"], hlite=is_hl("cuff"))
-    if active("straps"):
-        for s in G.STRAP_S:
-            h = hw_body(s)
-            poly([(-h + 0.3, s - 0.75), (h, s - 0.75), (h + 1.0, s), (h, s + 0.75), (-h + 0.3, s + 0.75)],
-                 COL["strap"], stroke=colors.HexColor("#555555"), hlite=is_hl("straps"))
-    if active("plate"):
-        pl = G.plate()
-        pts = [(x * 0.85, 18.9 - y) for x, y in pl.exterior.coords]
-        poly(pts, COL["plate"], hlite=is_hl("plate"))
-        # línea de grabado
-        inner = pl.buffer(-0.6)
-        if not inner.is_empty:
-            ipts = [(x * 0.85, 18.9 - y) for x, y in inner.exterior.coords]
-            c.saveState()
-            c.setStrokeColor(colors.HexColor("#C79A6B"))
-            c.setLineWidth(0.5)
-            c.setDash(1.5, 1.5)
-            p = c.beginPath()
-            for i, (x, s) in enumerate(ipts):
-                X, Y = P(x, s)
-                (p.moveTo if i == 0 else p.lineTo)(X * CM, Y * CM)
-            p.close()
-            c.drawPath(p, stroke=1, fill=0)
-            c.restoreState()
-    if active("dagger"):
-        xc = -0.6
-        sh = G.sheath_base()
-        poly([(x + xc, 1.6 + (7.5 - y)) for x, y in sh.exterior.coords], COL["sheath"], hlite=is_hl("dagger"))
-        cv = G.sheath_cover()
-        c.saveState()
-        c.setStrokeColor(colors.HexColor("#8A8A90"))
-        c.setLineWidth(0.4)
-        c.setDash(1.5, 1.5)
-        p = c.beginPath()
-        for i, (x, y) in enumerate(cv.buffer(-0.15).exterior.coords):
-            X, Y = P(x + xc, 1.6 + (7.5 - y) - 0.0)
-            (p.moveTo if i == 0 else p.lineTo)(X * CM, Y * CM)
-        p.close()
-        c.drawPath(p, stroke=1, fill=0)
-        c.restoreState()
-        poly([(x + xc, 9.1 + (0.8 - y)) for x, y in G.guard().exterior.coords], COL["metal"], hlite=is_hl("dagger"))
-        poly([(x + xc, 9.9 + (4.6 - y)) for x, y in G.grip().exterior.coords], COL["grip"], hlite=is_hl("dagger"))
-        poly([(x + xc, 14.5 + 0.75 - y) for x, y in G.pommel().exterior.coords], COL["metal"], hlite=is_hl("dagger"))
-    if ghost:
-        c.saveState()
-        c.setStrokeColor(GRAYT)
-        c.setDash(1.5, 1.5)
-        c.setLineWidth(0.7)
-        for s in G.STRAP_S:   # anillas D fantasma en las puntas
-            X, Y = P(hw_body(s) + 1.55, s)
-            c.circle(X * CM, Y * CM, 0.32 * sc * CM, stroke=1, fill=0)
-        for x, s in ((-1.6, 26.4), (1.6, 26.4), (0.0, 28.3)):   # remaches fantasma
-            X, Y = P(x, s)
-            c.circle(X * CM, Y * CM, 0.2 * sc * CM, stroke=1, fill=0)
-        c.restoreState()
-    return P
-
-
-def callout(c, n, p_from, p_to, r=0.3):
-    c.saveState()
-    c.setStrokeColor(ACCENT)
-    c.setLineWidth(0.8)
-    c.line(p_from[0] * CM, p_from[1] * CM, p_to[0] * CM, p_to[1] * CM)
-    c.setFillColor(ACCENT)
-    c.circle(p_to[0] * CM, p_to[1] * CM, r * CM, stroke=0, fill=1)
-    c.setFillColor(colors.white)
-    c.setFont("LS-B", 9)
-    c.drawCentredString(p_to[0] * CM, p_to[1] * CM - 3.1, str(n))
-    c.setFillColor(ACCENT)
-    c.circle(p_from[0] * CM, p_from[1] * CM, 0.07 * CM, stroke=0, fill=1)
-    c.restoreState()
-
-
-# ================================================================== dibujo de antebrazo/mano (medidas)
-def draw_arm(c, ox, oy, sc):
-    """ox,oy: posición (cm) de la muñeca (y=0 en el pliegue); y hacia arriba = codo."""
-
-    def P(x, y):
-        return (ox + x * sc, oy + y * sc)
-
-    def hw(y):
-        return 2.75 + 0.065 * y
-
-    skin = colors.HexColor("#EBCBA8")
-    edge = colors.HexColor("#B88B62")
-
-    def poly(pts, fill, stroke=edge, lw=0.8, alpha=1.0):
-        p = c.beginPath()
-        for i, (x, y) in enumerate(pts):
-            X, Y = P(x, y)
-            (p.moveTo if i == 0 else p.lineTo)(X * CM, Y * CM)
-        p.close()
-        c.saveState()
-        c.setFillAlpha(alpha)
-        c.setFillColor(fill)
-        c.setStrokeColor(stroke)
-        c.setLineWidth(lw)
-        c.drawPath(p, stroke=1, fill=1)
-        c.restoreState()
-
-    # antebrazo
-    poly([(-hw(0), 0), (hw(0), 0), (hw(25.5), 25.5), (-hw(25.5), 25.5)], skin)
-    # mano (dorso) y dedos
-    poly([(-2.9, 0), (2.9, 0), (4.3, -10), (-4.3, -10)], skin)
-    for i in range(4):
-        x0 = -4.3 + i * 2.15
-        ln = [7.6, 8.6, 8.2, 6.6][i]
-        poly([(x0 + 0.05, -10), (x0 + 2.1, -10), (x0 + 2.0, -10 - ln), (x0 + 0.15, -10 - ln)], skin)
-    # brazal translúcido
-    for pts, col in (([(-hw(4) - 0.4, 4), (hw(4) + 0.4, 4), (hw(21.5) + 0.4, 21.5), (-hw(21.5) - 0.4, 21.5)], COL["body"]),
-                     ([(-hw(1) - 0.35, 1), (hw(1) + 0.35, 1), (hw(4) + 0.4, 4), (-hw(4) - 0.4, 4)], COL["cuff"]),
-                     ([(-3.7, 2.5), (3.7, 2.5), (4.7, -2.5), (4.5, -6), (3.5, -7.8), (0, -9.0), (-3.5, -7.8), (-4.5, -6), (-4.7, -2.5)], COL["plate"])):
-        poly(pts, col, stroke=DARK, lw=0.6, alpha=0.55)
-
-    def dim_h(y, x0, x1, label, side="r", extra=0.0):
-        X0, Y = P(x0, y)
-        X1, _ = P(x1, y)
-        c.saveState()
-        c.setStrokeColor(ACCENT)
-        c.setLineWidth(0.8)
-        c.line(X0 * CM, Y * CM, X1 * CM, Y * CM)
-        for X in (X0, X1):
-            c.line(X * CM, (Y - 0.15) * CM, X * CM, (Y + 0.15) * CM)
-        c.restoreState()
-        if side == "r":
-            text(c, label, X1 + 0.2 + extra * sc, Y - 0.1, 7.5, "LS-B", ACCENT)
-
-    def dim_v(x, y0, y1, label, left=True):
-        X, Y0 = P(x, y0)
-        _, Y1 = P(x, y1)
-        c.saveState()
-        c.setStrokeColor(ACCENT)
-        c.setLineWidth(0.8)
-        c.line(X * CM, Y0 * CM, X * CM, Y1 * CM)
-        for Y in (Y0, Y1):
-            c.line((X - 0.15) * CM, Y * CM, (X + 0.15) * CM, Y * CM)
-        c.restoreState()
-        text(c, label, X - 0.2 if left else X + 0.2, (Y0 + Y1) / 2, 7.5, "LS-B", ACCENT, "c", 90 if left else 90)
-
-    dim_h(21.5, -hw(21.5) - 0.4, hw(21.5) + 0.4, "M2 · 26,0")
-    dim_h(4.0, -hw(4) - 0.4, hw(4) + 0.4, "M3 · 18,0")
-    dim_h(0.0, -hw(0) - 0.2, hw(0) + 0.2, "M4 · 17,0", extra=2.2)
-    dim_h(-10.0, -4.3, 4.3, "M8 · 8,6", extra=0.2)
-    dim_v(-hw(21.5) - 1.0, 4, 21.5, "M5 · 17,5 (largo del brazal)")
-    dim_v(-5.0, 0, -10, "M7 · 10,0")
-    text(c, "codo ↑", ox, oy + 26.3 * sc, 7.5, "LS-I", GRAYT, "c")
-
-
-# ================================================================== PORTADA (pág. 1)
+# ================================================================== PORTADA
 def page_cover(c):
     c.setFillColor(BROWN)
     c.rect(0, (PH - 7.6) * CM, PW * CM, 7.6 * CM, stroke=0, fill=1)
     c.setFillColor(ACCENT)
     c.rect(0, (PH - 7.75) * CM, PW * CM, 0.15 * CM, stroke=0, fill=1)
-    text(c, "COSPLAY · PATRONES + TUTORIAL", 1.8, PH - 2.0, 9.5, "LS-B", colors.HexColor("#F0DCC4"))
+    text(c, "COSPLAY · PATRONES + TUTORIAL · VERSIÓN COMPLETA", 1.8, PH - 2.0, 9.5, "LS-B", colors.HexColor("#F0DCC4"))
     text(c, "BRACERAS DE HIPO", 1.8, PH - 3.7, 34, "LS-B", colors.white)
     text(c, "Cómo entrenar a tu dragón 2", 1.8, PH - 4.7, 15, "LS-I", colors.HexColor("#F0DCC4"))
-    text(c, "Hecho en goma EVA de 5 mm · piezas a escala 1:1 en hojas A4", 1.8, PH - 5.65, 11, "LS", colors.white)
+    text(c, "4 piezas principales por bracera · goma EVA 5 mm · patrones 1:1 en A4", 1.8, PH - 5.65, 11, "LS", colors.white)
     text(c, "Talla de referencia: hombre de 1,75 m · complexión normal", 1.8, PH - 6.4, 10, "LS-B", colors.HexColor("#F0DCC4"))
-    # dibujo
-    draw_bracer(c, 15.4, PH - 8.9, 0.3, upto=6)
-    # texto lateral
-    y = PH - 9.2
-    box(c, 1.6, y - 6.4, 9.7, 6.4)
-    text(c, "Qué incluye", 2.0, y - 0.75, 11, "LS-B", BROWN)
-    items = [
-        "Análisis de la pieza a partir de tus dos referencias (render de la película y réplica de cosplay).",
-        "Medidas y cálculo para un hombre de 1,75 m, con la fórmula para cualquier otra talla.",
-        "<b>4 hojas de patrones A4 a escala 1:1</b> (P1–P4): cada pieza cabe en una hoja A4 de goma EVA.",
-        "Orden de montaje por capas y tutorial paso a paso: corte, termoformado, pegado, sellado y pintura.",
-    ]
-    yy = y - 1.05
-    for it in items:
-        yy = para(c, it, 2.0, yy, 9.0, ST["bul"].clone("x", bulletText="•")) if False else yy
-        p = Paragraph(it, ST["bul"], bulletText="•")
-        _, h = p.wrap(9.0 * CM, 1000)
-        p.drawOn(c, 2.0 * CM, yy * CM - h)
-        yy -= h / CM + 0.15
-    # cómo usar
-    y2 = y - 9.4
-    box(c, 1.6, y2 - 5.6, 17.8, 5.6)
+    sc = 0.33
+    draw_bracer(c, 15.3, PH - 8.4 - (G.BASE_Y1 + G.PEAK_H) * sc, sc, upto=6, variant="A")
+    y = PH - 8.6
+    box(c, 1.6, y - 10.3, 9.4, 10.3)
+    text(c, "Las 4 piezas de cada bracera", 2.0, y - 0.75, 11, "LS-B", BROWN)
+    pieces = [("1", "Base", "capa oscura envolvente con pico hacia el codo"),
+              ("2", "Panel frontal", "cuero marrón con ranuras para las cinchas"),
+              ("3", "Puño", "muñequera oscura de la que sale la guarda"),
+              ("4", "Guarda de mano", "versión A placa única · versión B segmentada")]
+    yy = y - 1.45
+    for n, name, desc in pieces:
+        c.setFillColor(ACCENT)
+        c.circle(2.35 * CM, (yy + 0.1) * CM, 0.3 * CM, stroke=0, fill=1)
+        text(c, n, 2.35, yy - 0.02, 9, "LS-B", colors.white, "c")
+        text(c, name, 2.9, yy, 10, "LS-B", DARK)
+        yy = para(c, desc, 2.9, yy - 0.2, 7.8, "s") - 0.55
+    yy = para(c, "+ accesorios: 3 filas de cinchas (3 tramos cada una) y la daga con funda.", 2.0, yy + 0.1, 8.7, "s") - 0.3
+    text(c, "Qué incluye", 2.0, yy - 0.3, 9.5, "LS-B", BROWN)
+    bullets(c, ["Análisis de las referencias y despiece", "Medidas y cálculo para 1,75 m", "6 hojas de patrones A4 a escala 1:1",
+                "Tutorial en 5 partes + tabla de tallas"], 2.0, yy - 0.5, 8.6, "buls", 0.02)
+    y2 = y - 10.3 - 0.45
+    box(c, 1.6, y2 - 4.7, 17.8, 4.7)
     text(c, "Cómo usar este PDF", 2.0, y2 - 0.75, 11, "LS-B", BROWN)
     steps = [
-        "<b>Imprime las hojas P1–P4</b> (páginas 6 a 9) en horizontal y al <b>100 % · «tamaño real»</b>. Desactiva «ajustar a página».",
-        "<b>Comprueba la regla de 10 cm</b> impresa en la esquina de cada hoja. Si no mide 10,0 cm, corrige la escala.",
-        "Recorta las piezas por la línea negra gruesa, traza sobre la goma EVA y corta. Las líneas discontinuas son guías, no se cortan.",
-        "Prueba la talla con papel (tutorial, paso 1) y, si tu antebrazo es distinto, usa la tabla de la página 13.",
-        "Monta siguiendo el orden de capas de la página 5 y el tutorial de las páginas 10 a 12.",
+        "<b>Lee las págs. 2–6</b>: análisis, despiece, medidas, materiales y orden de montaje.",
+        "<b>Imprime las hojas P1–P6</b> (págs. 7–12, o el PDF «Guías A4») en horizontal y al <b>100 % · tamaño real</b>.",
+        "<b>Comprueba la regla de 10 cm</b> de cada hoja. Si no mide 10,0 cm, corrige la escala antes de seguir.",
+        "Haz la <b>prueba en papel</b> con la base y el panel antes de cortar goma (tutorial, paso 1).",
+        "Elige guarda <b>A</b> (hoja P4) o <b>B</b> (hojas P5 + P6) y sigue el tutorial de las págs. 13–17.",
     ]
     yy = y2 - 1.1
     for i, s in enumerate(steps, 1):
-        p = Paragraph(s, ST["b"], bulletText=f"{i}.")
-        p.style = ParagraphStyle("n", parent=ST["b"], leftIndent=13, bulletIndent=1, bulletFontName="LS-B")
-        p = Paragraph(s, p.style, bulletText=f"{i}.")
+        p = Paragraph(s, ST["b"].clone("n", leftIndent=13, bulletIndent=1, bulletFontName="LS-B"), bulletText=f"{i}.")
         _, h = p.wrap(17.0 * CM, 1000)
         p.drawOn(c, 2.0 * CM, yy * CM - h)
-        yy -= h / CM + 0.2
-    # fuera del pdf
-    y3 = y2 - 5.6 - 0.4
-    box(c, 1.6, y3 - 3.0, 17.8, 3.0, fill=colors.HexColor("#F3F3F3"))
-    text(c, "Fuera de este PDF (detalles)", 2.0, y3 - 0.75, 11, "LS-B", GRAYT)
-    para(c, "Hebillas y anillas D · remaches y tachuelas · lazo/correa del dedo · hoja metálica y adornos · ojales y cierre interior · "
-            "costuras y texturas finas. El tutorial solo indica <i>dónde van</i> (en gris discontinuo en el dibujo) para que puedas añadirlos después con los materiales que prefieras.",
-         2.0, y3 - 1.05, 17.0, "b")
+        yy -= h / CM + 0.18
+    y3 = y2 - 4.7 - 0.45
+    box(c, 1.6, y3 - 2.6, 17.8, 2.6, fill=colors.HexColor("#F3F3F3"))
+    text(c, "Fuera de este PDF (detalles)", 2.0, y3 - 0.7, 10.5, "LS-B", GRAYT)
+    para(c, "Hebillas, anillas D y presillas · remaches y tachuelas · lazo del dedo · hoja metálica de la daga · costuras reales. "
+            "Solo se indica <i>dónde van</i> (gris discontinuo en los dibujos).", 2.0, y3 - 1.0, 17.0, "s")
 
 
-# ================================================================== PÁG 2: análisis
+# ================================================================== PÁG 2 · ANÁLISIS
 def page_analysis(c):
-    chrome(c, 2, "PARTE I · ANÁLISIS", "Análisis de la pieza")
-    y = para(c, "Las dos referencias muestran el mismo brazal con dos lecturas. La <b>ref. 1</b> (render de la película) da las proporciones y "
-                "la distribución de piezas; la <b>ref. 2</b> (réplica de cosplay) muestra cómo se resuelve en capas: borde elevado, cinchas, "
-                "funda de daga y placa de mano. Tomamos lo estructural de ambas y dejamos fuera la herrería (hebillas, remaches, anillas).",
-             1.6, PH - 2.2, 17.8, "b")
-    # dibujo con llamadas
-    ox, oy, sc = 4.3, y - 1.2, 0.56
-    P = draw_bracer(c, ox, oy, sc, upto=6, ghost=True)
-    def pt(x, s):
-        return P(x, s)
-    callout(c, 1, pt(3.3, 11.6), (pt(3.3, 11.6)[0] + 1.9, pt(3.3, 11.6)[1]))
-    callout(c, 2, pt(4.9, 8.75), (pt(4.9, 8.75)[0] + 1.3, pt(4.9, 8.75)[1] + 0.6))
-    callout(c, 3, pt(2.8, 0.5), (pt(2.8, 0.5)[0] + 2.0, pt(2.8, 0.5)[1] + 0.3))
-    callout(c, 4, pt(2.5, 19.0), (pt(2.5, 19.0)[0] + 2.2, pt(2.5, 19.0)[1]))
-    callout(c, 5, pt(3.0, 24.5), (pt(3.0, 24.5)[0] + 2.1, pt(3.0, 24.5)[1]))
-    callout(c, 6, pt(-0.6, 4.5), (pt(-0.6, 4.5)[0] - 2.4, pt(-0.6, 4.5)[1] + 0.3))
-    callout(c, 6, pt(-0.6, 12.2), (pt(-0.6, 12.2)[0] - 2.4, pt(-0.6, 12.2)[1]))
-    callout(c, 7, pt(1.6, 26.4), (pt(1.6, 26.4)[0] + 1.9, pt(1.6, 26.4)[1] - 0.4))
-    text(c, "Vista frontal esquemática del brazal con daga", ox, oy - 31.2 * sc - 0.2, 7.5, "LS-I", GRAYT, "c")
-    # tabla
+    chrome(c, 2, TOTAL, "PARTE I · ANÁLISIS", "Análisis de la pieza")
+    y = para(c, "Mirando con detalle las dos referencias, cada bracera no es un tubo único sino <b>4 piezas grandes superpuestas</b>: "
+                "una <b>base</b> oscura que envuelve el antebrazo y sube en un pico hacia el codo, un <b>panel</b> marrón encima, "
+                "un <b>puño</b> oscuro en la muñeca y una <b>guarda</b> sobre el dorso de la mano. Las cinchas atraviesan el panel por ranuras "
+                "y en el brazo izquierdo sujetan la daga.", 1.6, PH - 2.2, 17.8, "b")
+    sc = 0.5
+    ox, oy = 5.0, y - 0.9 - (G.BASE_Y1 + G.PEAK_H + 0.3) * sc
+    P = draw_bracer(c, ox, oy, sc, upto=6, ghost=True, variant="A")
+    tx = ox + 5.6 * sc
+    callout(c, 1, P(4.2, 17.6), (tx, P(0, 19.5)[1]))
+    callout(c, 2, P(2.2, 13.2), (tx, P(0, 13.2)[1]))
+    callout(c, 3, P(3.5, 3.5), (tx, P(0, 3.5)[1]))
+    callout(c, 4, P(3.3, -5.0), (tx, P(0, -5.0)[1]))
+    callout(c, 5, P(5.0, G.STRAP_Y[1]), (tx, P(0, 10.0)[1]))
+    callout(c, 6, P(G.DAGGER_X - 0.2, 16.5), (ox - 6.2 * sc, P(0, 16.5)[1]))
+    callout(c, 6, P(G.DAGGER_X, 9.5), (ox - 6.2 * sc, P(0, 9.5)[1]))
+    callout(c, 7, P(-5.0, G.STRAP_Y[0]), (ox - 6.2 * sc, P(0, 14.4)[1]), color=GRAYT)
+    callout(c, 7, P(2.2, -8.3), (tx, P(0, -8.3)[1]), color=GRAYT)
+    text(c, "Brazal izquierdo (con daga), vista exterior", ox, oy - 11.0 * sc - 0.3, 7.5, "LS-I", GRAYT, "c")
     data = [
         ["", "Qué se ve en las referencias", "Cómo lo resolvemos en EVA 5 mm", "Pieza"],
-        ["1", "Cuerpo de cuero marrón, cónico: ancho en el codo y estrecho en la muñeca. Se abre por el lado interior del antebrazo.",
-         "Un <b>sector de corona circular</b> (cono desarrollado) que se termoforma y deja ~2 cm de hueco de cierre.", "A ×2"],
-        ["2", "Tres cinchas negras horizontales; sus puntas sobresalen por el borde de cierre.",
-         "Tiras rectas de 1,5 cm pegadas encima (no se enhebran en EVA de 5 mm). La punta libre queda para la hebilla.", "B1–B3 ×2"],
-        ["3", "Borde elevado alrededor del cuerpo (marcado en la ref. 2, más claro en la ref. 1).",
-         "Dos tiras en arco, arriba y abajo, con los cantos biselados.", "C, D ×2"],
-        ["4", "Puño negro justo antes de la mano, en continuidad con el cono.", "Banda cónica de 3 cm que prolonga el cuerpo hasta la muñeca.", "E ×2"],
-        ["5", "Placa sobre el dorso de la mano con línea grabada paralela al borde y remaches.",
-         "Placa de 5 mm curvada a lo ancho, con línea de grabado a 0,6 cm del borde. Remaches fuera.", "F ×2"],
-        ["6", "Daga en un solo brazal: funda oscura apuntando al codo, empuñadura marrón, guarda y pomo metálicos.",
-         "Funda en 2 capas (base + tapa más pequeña) y empuñadura en 2 capas (10 mm). Daga fija, sin hoja.", "G1, G2, H1–H3"],
-        ["7", "Anillas D, remaches, hebillas, correa del dedo.", "<b>Fuera del PDF</b>. Van en gris discontinuo en el dibujo.", "—"],
+        ["1", "<b>Base</b> de cuero oscuro que envuelve todo el antebrazo; asoma sobre el panel y sube en un pico detrás de la funda (ref. 1) y en el lomo (ref. 2).",
+         f"Cono desarrollado con hueco de cierre de {f1(G.GAP)} cm en el lado interior y pico de {f1(G.PEAK_H)} cm hacia el codo.", "1 ×2 (espejo)"],
+        ["2", "<b>Panel</b> marrón en la cara exterior, esquinas redondeadas, costura en el borde; las cinchas entran y salen por ranuras (ref. 2).",
+         f"Panel cónico de {f1(G.PANEL_W)} cm de ancho con 6 ranuras, formado sobre la base ya curvada.", "2 ×2"],
+        ["3", "<b>Puño</b>: banda oscura en la muñeca; la guarda sale por debajo (ref. 1).",
+         "Banda cónica de 3 cm: 2 cm pegados sobre la base y 1 cm de vuelo que tapa la bisagra.", "3 ×2"],
+        ["4", "<b>Guarda de mano</b>. Ref. 1: placa con línea grabada. Ref. 2: base oscura + 4 láminas + banda.",
+         "Dos versiones: <b>A</b> placa única · <b>B</b> segmentada. Unida al puño con bisagra flexible.", "4A / 4B ×2"],
+        ["5", "Tres <b>cinchas</b> negras: puntas libres en el lado posterior, hebillas en el anterior.",
+         "Cada fila en 3 tramos: anterior, posterior (con punta) y central, que entra en las ranuras.", "B1–B3"],
+        ["6", "<b>Daga</b>: funda oscura con costura; guarda y pomo metálicos. Las cinchas 1 y 2 pasan por encima de la funda.",
+         "Funda en 2 capas y empuñadura en 2 capas (10 mm). Cinchas centrales B1/B2 más largas en ese brazal.", "G, H"],
+        ["7", "Hebillas, anillas, remaches, lazo del dedo.", "<b>Fuera del PDF</b> (gris discontinuo en el dibujo).", "—"],
     ]
-    yt = table(c, data, 8.3, y - 0.2, [0.55, 4.3, 4.65, 1.6])
-    # observaciones
-    yb = min(yt, oy - 31.2 * sc - 0.7) - 0.3
+    yt = table(c, data, 8.6, y - 0.25, [0.5, 4.2, 4.5, 1.6], pad=2.2)
+    yb = min(yt, oy - 11.0 * sc - 0.6) - 0.35
     yb = para(c, "Observaciones de construcción", 1.6, yb, 17.8, "h2")
-    obs = [
-        "<b>Asimetría:</b> en las referencias la daga aparece en un solo brazal (ref. 1: el brazo izquierdo del personaje). Todas las piezas son simétricas, así que "
-        "puedes montar la funda en el brazal que prefieras; el otro lleva solo cinchas.",
-        "<b>Cono, no cilindro:</b> el antebrazo pasa de ~26 cm de perímetro cerca del codo a ~18 cm junto a la muñeca. Un rectángulo arrugaría; "
-        "el sector circular (pág. 3) da un ajuste limpio sin cortes.",
-        "<b>Capas:</b> cuerpo (5 mm) → ribetes y cinchas (+5 mm) → daga (+10 mm). Con tan poca altura acumulada el brazal sigue siendo cómodo y flexible.",
-        "<b>Todo cabe en A4:</b> la pieza más grande (cuerpo, "
-        f"{f1(C['bw'])} × {f1(C['bh'])} cm) cabe en una hoja de goma EVA de 21 × 29,7 cm sin empalmes.",
+    yb = bullets(c, [
+        "<b>Izquierda / derecha:</b> el pico (lado posterior) y las puntas de las cinchas cambian de lado. Los patrones se dibujan para el "
+        "<b>brazo izquierdo</b>; para el derecho se da la vuelta a la plantilla de la base.",
+        "<b>La base se ve:</b> en la ref. 1 la capa oscura asoma 2–4 cm por encima del panel y por los costados. Por eso el panel cubre solo un tercio del perímetro.",
+        "<b>Capas:</b> base (5 mm) → puño y panel (+5) → cinchas (+5) → daga (+10). Unos 2,5 cm de altura total en la zona de la funda.",
+        "<b>Todo cabe en A4:</b> la pieza mayor (base, " + sz(G.base()) + " cm) entra en una hoja de goma EVA de 21 × 29,7 cm sin empalmes.",
+    ], 1.6, yb, 17.8)
+    assert yb > 1.7, yb
+
+
+# ================================================================== PÁG 3 · DESPIECE
+def page_parts(c):
+    chrome(c, 3, TOTAL, "PARTE I · ANÁLISIS", "Las 4 piezas principales")
+    y = para(c, "Cada pieza principal se dibuja aquí en plano y a escala reducida (las medidas son las reales). Todas siguen el mismo cono del "
+                "antebrazo, por eso encajan una sobre otra sin arrugas.", 1.6, PH - 2.2, 17.8, "b")
+    cards = [
+        ("1 · BASE", G.base(), COL["base"], 0.23,
+         [f"Medida: {sz(G.base())} cm · hoja P1 (×2)", f"Abarca de 3 a {f1(G.BASE_Y1)} cm sobre la muñeca, +{f1(G.PEAK_H)} cm de pico.",
+          f"Deja un hueco de {f1(G.GAP)} cm en el lado interior.", "Brazo derecho: plantilla del revés."]),
+        ("2 · PANEL FRONTAL", G.panel(), COL["panel"], 0.38,
+         [f"Medida: {sz(G.panel())} cm · hoja P2 (×2)", f"Ancho {f1(PANEL_TOP_W)} cm arriba y {f1(PANEL_BOT_W)} cm abajo.",
+          "6 ranuras de 0,5 × 1,6 cm para las cinchas.", "Costura grabada a 0,45 cm del borde."]),
+        ("3 · PUÑO", G.cuff(), COL["cuff"], 0.33,
+         [f"Medida: {sz(G.cuff())} cm · hoja P3 (×2)", "Alto 3 cm: 2 pegados sobre la base y 1 cm de vuelo.",
+          "Mismo hueco de cierre que la base.", "Tapa la bisagra de la guarda."]),
+        ("4 · GUARDA DE MANO", None, COL["guard"], 0.33,
+         [f"A · placa única {sz(G.guard_plate())} cm · hoja P4", f"B · base {sz(G.guard_seg_base())} + banda + 4 láminas · P5 + P6",
+          "Va del puño a los nudillos.", "Bisagra flexible: la muñeca se mueve."]),
     ]
-    for o in obs:
-        p = Paragraph(o, ST["bul"], bulletText="•")
-        _, h = p.wrap(17.8 * CM, 1000)
-        p.drawOn(c, 1.6 * CM, yb * CM - h)
-        yb -= h / CM + 0.15
-    assert yb > 1.8, f"pág 2 desborda: {yb}"
+    cw, ch = 8.75, 8.3
+    y0 = y - 0.35
+    for i, (title, poly, fill, sc, lines) in enumerate(cards):
+        col, row = i % 2, i // 2
+        x = 1.6 + col * (cw + 0.3)
+        yt = y0 - row * (ch + 0.3)
+        box(c, x, yt - ch, cw, ch)
+        text(c, title, x + 0.35, yt - 0.62, 10, "LS-B", BROWN)
+        area_top = yt - 0.95
+        if poly is not None:
+            w, h = G.size(poly)
+            px = x + cw / 2 - w * sc / 2
+            py = area_top - h * sc
+            ps = G.at(poly, 0, 0)
+            draw_poly(c, ps, fill=fill, stroke=DARK, lw=0.6, ox=px, oy=py, sc=sc)
+            bottom = py
+        else:
+            ga = G.at(G.guard_plate(), 0, 0)
+            gb = G.at(G.guard_seg_base(), 0, 0)
+            w, h = G.size(ga)
+            px = x + cw / 2 - w * sc - 0.35
+            py = area_top - h * sc
+            draw_poly(c, ga, fill=COL["guard"], stroke=DARK, lw=0.6, ox=px, oy=py, sc=sc)
+            gx = x + cw / 2 + 0.35
+            off = G.guard_seg_base().bounds
+            draw_poly(c, gb, fill=COL["guard_base"], stroke=DARK, lw=0.6, ox=gx, oy=py, sc=sc)
+            for k in range(4):
+                s = affinity.translate(G.guard_strip(k), -off[0], -off[1])
+                draw_poly(c, s, fill=COL["guard"], stroke=DARK, lw=0.4, ox=gx, oy=py, sc=sc)
+            bd = affinity.translate(G.guard_band(), -off[0], -off[1])
+            draw_poly(c, bd, fill=COL["guard"], stroke=DARK, lw=0.4, ox=gx, oy=py, sc=sc)
+            text(c, "A", px + w * sc / 2, py - 0.4, 8, "LS-B", BROWN, "c")
+            text(c, "B", gx + w * sc / 2, py - 0.4, 8, "LS-B", BROWN, "c")
+            bottom = py - 0.4
+        yy = yt - ch + 2.3
+        bullets(c, lines, x + 0.3, yy, cw - 0.6, "buls", 0.0)
+    yb = y0 - 2 * ch - 0.3 - 0.45
+    yb = para(c, "Corte transversal: cómo se apilan las capas", 1.6, yb, 17.8, "h2")
+    sc = 0.47
+    cx, cy = 5.0, yb - 3.15
+    r_in = draw_section(c, cx, cy, sc)
+    text(c, "exterior (panel)", cx, cy + (r_in + 1.9) * sc, 7, "LS-B", BROWN, "c")
+    text(c, f"interior: hueco {f1(G.GAP)} cm", cx, cy - (r_in + 1.2) * sc, 7, "LS-B", ACCENT, "c")
+    text(c, "punta libre →", cx - 2.0, cy - (r_in + 1.4) * sc, 6.5, "LS-I", GRAYT, "r")
+    data = [["Capa", "Pieza", "Altura sobre el brazo"],
+            ["1", "Base (1)", "5 mm"],
+            ["2", "Puño (3) o panel (2)", "10 mm"],
+            ["3", "Cinchas: tramos laterales sobre la base, central sobre el panel", "10 / 15 mm"],
+            ["4", "Daga (funda 2 capas, empuñadura 2 capas), solo brazo izquierdo", "≈ 25 mm"],
+            ["—", "Guarda (4): va aparte, unida al vuelo del puño con bisagra", "5–10 mm"]]
+    table(c, data, 9.6, yb - 0.2, [1.0, 6.4, 2.4], pad=2.4)
 
 
-# ================================================================== PÁG 3: medidas
+# ================================================================== PÁG 4 · MEDIDAS
 def page_measures(c):
-    chrome(c, 3, "PARTE I · ANÁLISIS", "Medidas para 1,75 m y cálculo del patrón")
-    y = para(c, "Medidas de partida para un hombre de <b>1,75 m y complexión normal</b> (valores antropométricos medios, medidos sobre la manga que "
-                "vayas a llevar). Si las tuyas difieren, usa la fórmula de abajo o la tabla de la página 13.", 1.6, PH - 2.2, 17.8, "b")
-    draw_arm(c, 4.4, 11.9, 0.46)
-    data = [
-        ["Cód.", "Medida", "Valor"],
-        ["M1", "Estatura de referencia", "175 cm"],
-        ["M2", "Perímetro del antebrazo, borde superior (a 21,5 cm de la muñeca)", "26,0 cm"],
-        ["M3", "Perímetro del antebrazo, borde inferior (a 4 cm de la muñeca)", "18,0 cm"],
-        ["M4", "Perímetro de la muñeca (hueso)", "17,0 cm"],
-        ["M5", "Largo del cuerpo del brazal (medido sobre el cono)", "17,5 cm"],
-        ["M6", "Alto del puño", "3,0 cm"],
-        ["M7", "Largo muñeca → nudillos (dorso de la mano)", "10,0 cm"],
-        ["M8", "Ancho del dorso a la altura de los nudillos", "8,6 cm"],
-        ["M9", "Holgura (manga + movimiento), sumada al perímetro", "+1,5 cm"],
-        ["M10", "Hueco de cierre entre bordes (lado interior)", "2,0 cm"],
-        ["M11", "Compensación por grosor de EVA: π × 0,5 cm", "+1,57 cm"],
-    ]
+    chrome(c, 4, TOTAL, "PARTE I · ANÁLISIS", "Medidas para 1,75 m y cálculo del patrón")
+    y = para(c, "Medidas de partida para un hombre de <b>1,75 m y complexión normal</b> (valores antropométricos medios). Mídelas siempre "
+                "<b>sobre la manga</b> que llevarás. Si las tuyas difieren, usa la fórmula de abajo o la tabla de la página 18.", 1.6, PH - 2.2, 17.8, "b")
+    draw_arm(c, 4.5, 10.6, 0.46)
     X0 = 9.0
-    yt = table(c, data, X0, y - 0.3, [1.1, 7.3, 2.0], pad=2.5)
-    yb = yt - 0.5
-    yb = para(c, "Cómo se obtiene el cuerpo del brazal (pieza A)", X0, yb, 10.4, "h3")
-    yb -= 0.1
-    L1, L2 = C["L1"], C["L2"]
+    data = [["Cód.", "Medida", "Valor"],
+            ["M1", "Estatura de referencia", "175 cm"],
+            ["M2", f"Perímetro del antebrazo a {f1(G.BASE_Y1)} cm de la muñeca (borde superior de la base)", f"{f1(G.skin(G.BASE_Y1))} cm"],
+            ["M3", f"Perímetro del antebrazo a {f1(G.BASE_Y0)} cm de la muñeca (borde inferior de la base)", f"{f1(G.skin(G.BASE_Y0))} cm"],
+            ["M4", "Perímetro de la muñeca", "17,0 cm"],
+            ["M5", "Largo de la base (lado interior) · + pico hacia el codo", f"{f1(G.H)} + {f1(G.PEAK_H)} cm"],
+            ["M6", "Puño: alto total / zona pegada sobre la base", "3,0 / 2,0 cm"],
+            ["M7", "Largo muñeca → nudillos", "10,0 cm"],
+            ["M8", "Ancho del dorso a la altura de los nudillos", "8,6 cm"],
+            ["M9", "Holgura sobre el perímetro (manga + movimiento)", f"+{f1(G.EASE)} cm"],
+            ["M10", "Hueco de cierre en el lado interior", f"{f1(G.GAP)} cm"],
+            ["M11", "Compensación por grosor: π × 0,5 cm por capa", "+1,57 cm"]]
+    yt = table(c, data, X0, y - 0.3, [1.1, 7.3, 2.0], pad=2.3)
+    yb = para(c, "Cálculo de la base (pieza 1)", X0, yt - 0.45, 10.4, "h3") - 0.1
     form = [
-        f"Arco superior  L1 = M2 + M9 + M11 − M10<br/>= 26,0 + 1,5 + 1,57 − 2,0 = <b>{f1(L1)} cm</b>",
-        f"Arco inferior  L2 = M3 + M9 + M11 − M10<br/>= 18,0 + 1,5 + 1,57 − 2,0 = <b>{f1(L2)} cm</b>",
-        f"Ángulo = (L1 − L2) / M5 = {f1(L1 - L2)} / 17,5 = <b>{f2(TH)} rad = {f1(math.degrees(TH))}°</b>",
-        f"Radio inferior R2 = L2 / ángulo = <b>{f1(R2)} cm</b><br/>Radio superior R1 = R2 + M5 = <b>{f1(R1)} cm</b>",
-        f"Resultado: sector de {f1(C['bw'])} × {f1(C['bh'])} cm → <b>cabe en una hoja A4</b> (29,7 × 21).",
+        f"Perímetro neutro abajo  C0 = M3 + M9 + M11 = <b>{f1(G.C0)} cm</b>",
+        f"Perímetro neutro arriba  C1 = M2 + M9 + M11 = <b>{f1(G.C1)} cm</b>",
+        f"Ángulo del desarrollo  θ = (C1 − C0) / M5 = <b>{f1(math.degrees(G.THETA))}°</b>",
+        f"Radio inferior  R0 = C0 / θ = <b>{f1(G.R0)} cm</b> · superior R0 + {f1(G.H)} = <b>{f1(G.R0 + G.H)} cm</b>",
+        f"Se resta el hueco de cierre ({f1(G.GAP)} cm) con dos cortes paralelos a la costura y se suma el pico.",
+        f"Resultado: <b>{sz(G.base())} cm</b> → cabe en una hoja A4.",
     ]
-    hbox = 4.7
-    box(c, X0, yb - hbox, 10.4, hbox)
+    hb = 4.4
+    box(c, X0, yb - hb, 10.4, hb)
     yy = yb - 0.25
     for f in form:
-        yy = para(c, f, X0 + 0.3, yy, 9.9, "s") - 0.2
-    yb = yb - hbox - 0.3
-    yb = para(c, "Por qué estas correcciones: un tubo desarrollado es un arco; al curvar goma de 5 mm la fibra neutra queda a 2,5 mm de la cara "
-                 "interior, por eso el patrón se mide en el centro del grosor (+π × t). El hueco de cierre se resta porque los bordes no se tocan.",
-              X0, yb, 10.4, "xs")
-    yb = para(c, "<b>Otras piezas derivadas del mismo cono.</b> Puño E: radios "
-            f"{f1(R2)} y {f1(R2 - G.CUFF_H)} cm, ángulo {f1(math.degrees(TH))}°, alto 3,0 cm. "
-            f"Cinchas B: largo = arco a esa altura + 1,0 cm "
-            f"(B1 {f1(G.strap(G.STRAP_S[0])[1])} · B2 {f1(G.strap(G.STRAP_S[1])[1])} · B3 {f1(G.strap(G.STRAP_S[2])[1])} cm × 1,5 cm). "
-            "Ribetes C y D: arcos de 1,0 cm de ancho con el mismo ángulo. Placa F: 11,5 × 9,4 cm (1,5 cm superiores sobre el puño).",
-         X0, yb - 0.35, 10.4, "s")
-    yb -= 0.5
-    box(c, X0, yb - 6.6, 10.4, 6.6, fill=colors.HexColor("#FFF6E8"), stroke=ACCENT)
+        yy = para(c, f, X0 + 0.3, yy, 9.9, "s") - 0.15
+    yb = para(c, "Panel, puño y cinchas usan el mismo cono, desplazado 0,5 cm hacia fuera por cada capa que tienen debajo "
+                 "(+π × 0,5 cm de perímetro por capa). Así cada pieza abraza a la anterior sin holguras ni arrugas.",
+              X0, yb - hb - 0.25, 10.4, "xs")
+    yb -= 0.35
+    box(c, X0, yb - 5.5, 10.4, 5.5, fill=WARM, stroke=ACCENT)
     text(c, "Cómo tomar tus medidas", X0 + 0.3, yb - 0.65, 10, "LS-B", ACCENT)
-    tips = ["Usa una cinta métrica flexible y mide <b>con la manga que llevarás puesta</b> (en el traje de Hipo, la manga verde).",
-            "Brazo relajado y ligeramente flexionado, sin apretar la cinta.",
-            "Marca con un rotulador de piel el punto a 4 cm y a 21,5 cm del pliegue de la muñeca y mide el perímetro en cada marca.",
-            "Mide el largo muñeca → nudillos con la mano abierta y el ancho a la altura de los nudillos.",
-            "Si tu proporción difiere (brazo muy musculado o muy delgado), sustituye M2 y M3 en la fórmula o usa la tabla de la pág. 13.",
-            "Haz el patrón de papel (tutorial, paso 1) antes de cortar la goma."]
-    yy = yb - 1.0
-    for t_ in tips:
-        p = Paragraph(t_, ST["buls"], bulletText="•")
-        _, h = p.wrap(9.8 * CM, 1000)
-        p.drawOn(c, (X0 + 0.3) * CM, yy * CM - h)
-        yy -= h / CM + 0.15
-    yb = yb - 6.6
-    assert yb > 1.8, f"pág 3 desborda: {yb}"
+    bullets(c, ["Cinta métrica flexible, <b>con la manga del traje puesta</b>, brazo relajado y ligeramente flexionado.",
+                f"Marca con rotulador de piel los puntos a {f1(G.BASE_Y0)} cm y a {f1(G.BASE_Y1)} cm del pliegue de la muñeca y mide el perímetro en cada uno.",
+                "Mano abierta: largo muñeca → nudillos y ancho a la altura de los nudillos.",
+                "Si tu brazo es muy musculado o muy delgado, cambia M2 y M3 en la fórmula o usa la tabla de tallas (pág. 18)."],
+            X0 + 0.3, yb - 1.0, 9.8, "buls", 0.12)
 
 
-# ================================================================== PÁG 4: materiales
+# ================================================================== PÁG 5 · MATERIALES Y PIEZAS
 def page_materials(c):
-    chrome(c, 4, "PARTE I · ANÁLISIS", "Materiales, herramientas y lista de piezas")
-    y = PH - 2.2
-    colw = 8.7
-    y = para(c, "Materiales", 1.6, y, colw, "h2")
-    mats = [
-        "<b>Goma EVA 5 mm, hojas A4 (21 × 29,7 cm): 5 hojas</b> (compra 6: una de repuesto). Mejor densidad media-alta; evita la goma muy blanda de manualidades.",
-        "Cemento de contacto (tipo «contact cement»), con pincel o espátula.",
-        "Papel A4 (para imprimir), tijeras y cartulina fina (plantillas reutilizables, opcional).",
-        "Imprimación flexible: Plasti Dip o vinílica/PVA diluida; pintura acrílica (marrón, negro, gris, plata, ocre); barniz mate.",
-        "Cinta de tela o tela fina para el refuerzo interior de la unión cuerpo–puño.",
-        "Elástico, velcro o cinta para el cierre interior (fuera del PDF).",
-    ]
-    for m in mats:
-        p = Paragraph(m, ST["buls"], bulletText="•")
-        _, h = p.wrap(colw * CM, 1000)
-        p.drawOn(c, 1.6 * CM, y * CM - h)
-        y -= h / CM + 0.1
-    ytop2 = PH - 2.2
-    x2 = 10.7
-    y2 = para(c, "Herramientas", x2, ytop2, 8.7, "h2")
-    tools = [
-        "Cúter o bisturí con cuchillas nuevas (9 mm, de partir).",
-        "Regla metálica, tapete de corte, lápiz o rotulador fino, punzón.",
-        "Pistola de calor (con temperatura regulable si es posible).",
-        "Botella o tubo cónico/cilíndrico (Ø 6–9 cm) para formar; cinta de carrocero.",
-        "Lija 120 y 240, o herramienta rotativa con fresa de lijado.",
-        "Pirograbador o cúter para las líneas de grabado (opcional).",
-        "Pinceles, esponja, trapos; guantes y mascarilla (ventilación con el cemento).",
-    ]
-    for m in tools:
-        p = Paragraph(m, ST["buls"], bulletText="•")
-        _, h = p.wrap(8.7 * CM, 1000)
-        p.drawOn(c, x2 * CM, y2 * CM - h)
-        y2 -= h / CM + 0.1
-    y = min(y, y2) - 0.4
-    y = para(c, "Lista de piezas (todas simétricas: no hace falta espejar)", 1.6, y, 17.8, "h2")
-    s = lambda k: G.size(G.layout_p3()[k]) if False else None
-    bw, bh = C["bw"], C["bh"]
-    pw, ph = G.size(G.plate())
-    sbw, sbh = G.size(G.sheath_base())
-    scw, sch = G.size(G.sheath_cover())
-    data = [
-        ["ID", "Pieza", "Cant.", "Tamaño aprox. (cm)", "Hoja", "Uso"],
-        ["A", "Cuerpo del brazal", "2", f"{f1(bw)} × {f1(bh)}", "P1 (2 hojas)", "Cono principal"],
-        ["B1", "Cincha superior", "2", f"{f1(G.strap(G.STRAP_S[0])[1])} × 1,5", "P2", "Encima del cuerpo, s = 3,0 cm"],
-        ["B2", "Cincha central", "2", f"{f1(G.strap(G.STRAP_S[1])[1])} × 1,5", "P2", "Encima del cuerpo, s = 8,75 cm"],
-        ["B3", "Cincha inferior", "2", f"{f1(G.strap(G.STRAP_S[2])[1])} × 1,5", "P2", "Encima del cuerpo, s = 14,5 cm"],
-        ["C", "Ribete superior (arco)", "2", f"arco {f1(C['L1'])} × 1,0", "P2", "Borde superior del cuerpo"],
-        ["D", "Ribete inferior (arco)", "2", f"arco {f1((R2 + 1) * TH)} × 1,0", "P4", "Borde inferior del cuerpo"],
-        ["E", "Puño", "2", f"arco {f1(C['L2'])} / {f1((R2 - 3) * TH)} × 3,0", "P3", "Prolonga el cuerpo hasta la muñeca"],
-        ["F", "Placa de mano", "2", f"{f1(ph)} × {f1(pw)}", "P3", "Dorso de la mano"],
-        ["G1", "Funda – base", "1*", f"{f1(sbh)} × {f1(sbw)}", "P4", "Funda de la daga"],
-        ["G2", "Funda – tapa", "1*", f"{f1(sch)} × {f1(scw)}", "P4", "Capa superior de la funda"],
-        ["H1", "Empuñadura", "2*", "4,6 × 1,4", "P4", "2 capas = 10 mm"],
-        ["H2", "Guarda", "2*", "3,0 × 0,8", "P4", "2 capas"],
-        ["H3", "Pomo", "2*", "Ø 1,5", "P4", "2 capas"],
-    ]
-    y = table(c, data, 1.6, y - 0.1, [1.0, 4.1, 1.2, 3.8, 2.4, 5.3], pad=2.2)
-    y = para(c, "* Cantidades para <b>una</b> daga (un solo brazal). Hojas de goma EVA necesarias: P1 ×2 + P2 + P3 + P4 = <b>5 hojas</b>.", 1.6, y - 0.15, 17.8, "xs")
-    y = para(c, "Distribución de las hojas de patrón", 1.6, y - 0.4, 17.8, "h2")
-    data2 = [
-        ["Hoja", "Contenido", "Hojas de EVA"],
-        ["P1", "A · cuerpo del brazal (trazar dos veces, una por brazal)", "2"],
-        ["P2", "B1–B3 ×2 (6 cinchas) + C ×2 (ribetes superiores)", "1"],
-        ["P3", "E ×2 (puños) + F ×2 (placas de mano)", "1"],
-        ["P4", "D ×2 (ribetes inferiores) + G1, G2, H1–H3 (daga)", "1"],
-    ]
-    y = table(c, data2, 1.6, y - 0.1, [1.3, 13.0, 3.5], pad=2.4)
-    assert y > 1.8, f"pág 4 desborda: {y}"
+    chrome(c, 5, TOTAL, "PARTE I · ANÁLISIS", "Materiales, herramientas y lista de piezas")
+    y = para(c, "Materiales", 1.6, PH - 2.2, 8.7, "h2")
+    y = bullets(c, [
+        "<b>Goma EVA 5 mm, hojas A4: 5 hojas</b> con guarda A o <b>6</b> con guarda B (compra una más de repuesto). Densidad media-alta.",
+        "Cemento de contacto, con pincel o espátula.",
+        "Papel A4 para imprimir y cartulina para plantillas reutilizables.",
+        "Imprimación flexible (Plasti Dip o vinílica/PVA diluida), acrílicos y barniz mate.",
+        "Para la bisagra de la guarda: elástico plano de 3 cm o polipiel (8 cm por guarda).",
+        "Para el cierre: hebillas o velcro (fuera del PDF).",
+    ], 1.6, y, 8.7, "buls", 0.08)
+    y2 = para(c, "Herramientas", 10.7, PH - 2.2, 8.7, "h2")
+    y2 = bullets(c, [
+        "Cúter o bisturí con cuchillas nuevas, regla metálica y tapete de corte.",
+        "Sacabocados o cúter fino para las ranuras del panel.",
+        "Pistola de calor; botella o tubo de Ø 6–9 cm; cinta de carrocero.",
+        "Lija 120/240 o herramienta rotativa con fresa de lijado.",
+        "Pirograbador o rueda de costura para las líneas grabadas (opcional).",
+        "Pinceles, esponja; guantes y mascarilla (ventila al usar cemento).",
+    ], 10.7, y2, 8.7, "buls", 0.08)
+    y = min(y, y2) - 0.3
+    y = para(c, "Lista completa de piezas", 1.6, y, 17.8, "h2")
+    s1, s2, s3 = (SL[v] for v in G.STRAP_Y)
+    data = [["ID", "Pieza", "Cant.", "Medida (cm)", "Hoja", "Notas"],
+            ["1", "Base", "2", sz(G.base()), "P1", "Izq. tal cual · der. del revés"],
+            ["2", "Panel frontal", "2", sz(G.panel()), "P2", "Con 6 ranuras"],
+            ["3", "Puño", "2", sz(G.cuff()), "P3", "Banda cónica de 3 cm"],
+            ["4A", "Guarda · placa única", "2", sz(G.guard_plate()), "P4", "Versión A"],
+            ["4B", "Guarda · base", "2", sz(G.guard_seg_base()), "P5", "Versión B"],
+            ["4B", "Guarda · banda", "2", sz(G.guard_band()), "P5", "Versión B"],
+            ["4B", "Guarda · láminas L1–L4", "2 de cada", "≈ 2,0 × 10–11", "P6", "Versión B"],
+            ["B·a", "Cincha tramo anterior B1a/B2a/B3a", "2 de cada", f"{f1(s1['medial'])} / {f1(s2['medial'])} / {f1(s3['medial'])} × 1,4", "P3", "Va a la hebilla"],
+            ["B·p", "Cincha tramo posterior B1p/B2p/B3p", "2 de cada", f"{f1(s1['lateral'])} / {f1(s2['lateral'])} / {f1(s3['lateral'])} × 1,4", "P3", "Con punta libre"],
+            ["B·c", "Cincha central B1c/B2c/B3c", "1 / 1 / 2", f"{f1(s1['central'])} / {f1(s2['central'])} / {f1(s3['central'])} × 1,4", "P2", "Entra en las ranuras"],
+            ["B·c", "Cincha central larga B1c·daga/B2c·daga", "1 / 1", f"{f1(s1['central_daga'])} / {f1(s2['central_daga'])} × 1,4", "P2", "Pasa sobre la funda"],
+            ["G1/G2", "Funda: base / tapa", "1 / 1", f"{sz(G.sheath_base())} / {sz(G.sheath_cover())}", "P2", "Solo brazo izq."],
+            ["H1–H3", "Empuñadura / guarda / pomo", "2 / 2 / 2", "4,4 × 1,4 · 3,0 × 0,8 · Ø 1,3", "P2", "2 capas cada uno"]]
+    y = table(c, data, 1.6, y - 0.1, [1.2, 5.1, 1.6, 4.4, 1.1, 4.4], pad=2.0)
+    y = para(c, "Distribución de las hojas de goma EVA", 1.6, y - 0.4, 17.8, "h2")
+    data2 = [["Hoja", "Contenido", "Hojas de EVA"],
+             ["P1", "1 · base (se traza dos veces: izquierda tal cual y derecha con la plantilla del revés)", "2"],
+             ["P2", "2 · paneles ×2 + cinchas centrales ×6 + daga completa", "1"],
+             ["P3", "3 · puños ×2 + cinchas anteriores ×6 + cinchas posteriores ×6", "1"],
+             ["P4", "4A · guardas de placa única ×2", "1 (versión A)"],
+             ["P5 + P6", "4B · bases ×2 y bandas ×2 (P5) + láminas ×8 (P6)", "2 (versión B)"]]
+    y = table(c, data2, 1.6, y - 0.1, [1.8, 12.7, 3.3], pad=2.3)
+    assert y > 1.7, y
 
 
-# ================================================================== PÁG 5: orden de montaje
+# ================================================================== PÁG 6 · ORDEN DE MONTAJE
 def page_assembly(c):
-    chrome(c, 5, "PARTE I · ANÁLISIS", "Orden de montaje por capas")
-    y = para(c, "Cada tarjeta añade una capa a la anterior (la pieza nueva lleva contorno naranja). Sigue este orden para que las uniones queden ocultas "
-                "y no tengas que pegar sobre superficies ya pintadas o selladas.", 1.6, PH - 2.2, 17.8, "b")
-    cards = [
-        ("1 · Cuerpo (A)", "body", "Corta A, bisela el borde inferior y termoforma el cono. Comprueba el cierre (≈ 2 cm) con cinta de carrocero.", "A"),
-        ("2 · Ribetes (C, D)", "rim", "Pega C arriba y D abajo, por la cara exterior y a ras del borde. Bisela sus extremos para que mueran suavemente.", "C, D"),
-        ("3 · Puño (E)", "cuff", "Unión a tope con bisel de 45° al borde inferior del cuerpo; refuerza por dentro con tira de tela.", "E"),
-        ("4 · Cinchas (B1–B3)", "straps", "Sigue las guías de P1. Empieza a 0,5 cm del borde izquierdo y deja ~1,5 cm de punta libre en el borde de cierre.", "B1–B3"),
-        ("5 · Placa de mano (F)", "plate", "Curva a lo ancho y pega los 1,5 cm superiores sobre el puño, centrada. Graba la línea a 0,6 cm del borde.", "F"),
-        ("6 · Daga (G, H)", "dagger", "Une por pares G1+G2, H1, H2 y H3; pega sobre las cinchas, con la funda hacia el codo (solo un brazal).", "G1, G2, H1–H3"),
-    ]
-    x0, y0 = 1.6, y - 0.4
-    cw, ch = 5.8, 9.6
-    for i, (title, layer, desc, ids) in enumerate(cards):
+    chrome(c, 6, TOTAL, "PARTE I · ANÁLISIS", "Orden de montaje por capas")
+    y = para(c, "Cada tarjeta añade una capa (la nueva lleva contorno naranja). Este orden oculta las uniones y te deja pegar siempre sobre goma "
+                "limpia, sin sellar ni pintar.", 1.6, PH - 2.2, 17.8, "b")
+    cards = [("1 · Base", "base", "Corta, termoforma el cono y abre ligeramente el pico. Prueba el cierre con cinta."),
+             ("2 · Puño", "cuff", "Pega 2 cm del puño sobre el borde inferior de la base; deja 1 cm de vuelo hacia la mano."),
+             ("3 · Panel", "panel", "Corta las ranuras, forma el panel sobre la base y pégalo centrado en la guía."),
+             ("4 · Cinchas", "straps", "Tramos anterior y posterior sobre la base; tramo central entrando en las ranuras."),
+             ("5 · Daga", "dagger", "Solo brazo izquierdo: funda bajo las cinchas centrales B1·B2; empuñadura sobre B3."),
+             ("6 · Guarda", "guard", "Une la guarda (A o B) al vuelo del puño con la bisagra de elástico o polipiel.")]
+    cw, ch = 5.8, 10.1
+    y0 = y - 0.35
+    sc = 0.235
+    for i, (title, layer, desc) in enumerate(cards):
         col, row = i % 3, i // 3
-        x = x0 + col * (cw + 0.3)
-        yt = y0 - row * (ch + 0.35)
+        x = 1.6 + col * (cw + 0.2)
+        yt = y0 - row * (ch + 0.3)
         box(c, x, yt - ch, cw, ch)
         text(c, title, x + 0.3, yt - 0.6, 9.5, "LS-B", BROWN)
-        draw_bracer(c, x + cw / 2 - 0.2, yt - 1.1, 0.2, upto=i + 1, hl=layer)
+        draw_bracer(c, x + cw / 2, yt - 1.0 - (G.BASE_Y1 + G.PEAK_H + 0.2) * sc, sc, upto=i + 1, hl=layer)
         p = Paragraph(desc, ST["s"])
         _, h = p.wrap((cw - 0.6) * CM, 1000)
-        p.drawOn(c, (x + 0.3) * CM, (yt - ch + 0.3) * CM + 0)
-    yb = y0 - 2 * ch - 0.35 - 0.3
+        p.drawOn(c, (x + 0.3) * CM, (yt - ch + 0.3) * CM)
+    yb = y0 - 2 * ch - 0.3 - 0.4
     yb = para(c, "Reglas de oro del montaje", 1.6, yb, 17.8, "h2")
-    rules = [
-        "Pega siempre de dentro hacia fuera: primero lo que quedará debajo.",
-        "Prueba en seco (sin pegar) cada capa antes de aplicar cemento: el contacto no se puede recolocar.",
-        "Lija y limpia el polvo de las zonas de unión; una cara quemada por el calor o el cúter pega peor.",
-        "Sella y pinta <b>después</b> de montar las capas planas, pero antes de añadir hebillas y remaches.",
-    ]
-    for r in rules:
-        p = Paragraph(r, ST["bul"], bulletText="•")
-        _, h = p.wrap(17.8 * CM, 1000)
-        p.drawOn(c, 1.6 * CM, yb * CM - h)
-        yb -= h / CM + 0.1
-    assert yb > 1.8, f"pág 5 desborda: {yb}"
+    yb = bullets(c, ["Prueba en seco cada capa antes de poner cemento: el cemento de contacto no se puede recolocar.",
+                     "Forma (calienta) cada pieza antes de pegarla; el panel se forma usando la base ya curvada como molde.",
+                     "Sella y pinta después de montar las capas, pero antes de añadir hebillas y remaches."], 1.6, yb, 17.8, "bul", 0.08)
+    assert yb > 1.7, yb
 
 
 # ================================================================== HOJAS DE PATRONES
-def ruler(c):
-    x0, y = 18.7, 19.85
+def ruler(c, x0=18.7, y=20.0, vertical=False):
     c.saveState()
     c.setStrokeColor(DARK)
     c.setLineWidth(0.8)
-    c.line(x0 * CM, y * CM, (x0 + 10) * CM, y * CM)
-    for i in range(11):
-        h = 0.32 if i % 5 == 0 else 0.18
-        c.line((x0 + i) * CM, y * CM, (x0 + i) * CM, (y + h) * CM)
+    if not vertical:
+        c.line(x0 * CM, y * CM, (x0 + 10) * CM, y * CM)
+        for i in range(11):
+            h = 0.3 if i % 5 == 0 else 0.17
+            c.line((x0 + i) * CM, y * CM, (x0 + i) * CM, (y + h) * CM)
+    else:
+        c.line(x0 * CM, y * CM, x0 * CM, (y + 10) * CM)
+        for i in range(11):
+            h = 0.3 if i % 5 == 0 else 0.17
+            c.line(x0 * CM, (y + i) * CM, (x0 + h) * CM, (y + i) * CM)
     c.restoreState()
-    text(c, "0", x0, y - 0.32, 6.5, "LS", DARK, "c")
-    text(c, "5", x0 + 5, y - 0.32, 6.5, "LS", DARK, "c")
-    text(c, "10 cm", x0 + 10, y - 0.32, 6.5, "LS-B", DARK, "c")
-    text(c, "Regla de control: debe medir exactamente 10,0 cm", x0 - 0.3, y + 0.05, 7, "LS", DARK, "r")
+    if not vertical:
+        text(c, "0", x0, y - 0.3, 6.5, "LS", DARK, "c")
+        text(c, "5", x0 + 5, y - 0.3, 6.5, "LS", DARK, "c")
+        text(c, "10 cm", x0 + 10, y - 0.3, 6.5, "LS-B", DARK, "c")
+        text(c, "Regla de control: debe medir 10,0 cm", x0 - 0.3, y + 0.05, 7, "LS", DARK, "r")
+    else:
+        text(c, "0", x0 + 0.45, y - 0.08, 6.5, "LS", DARK)
+        text(c, "5", x0 + 0.45, y + 4.92, 6.5, "LS", DARK)
+        text(c, "10 cm", x0 + 0.45, y + 9.92, 6.5, "LS-B", DARK)
+        text(c, "Regla de control: 10,0 cm", x0 - 0.12, y + 5.0, 6.5, "LS", DARK, "c", 90)
 
 
 def pattern_header(c, code, title):
-    text(c, f"HOJA {code} · {title}", 0.9, 19.95, 9.5, "LS-B", BROWN)
-    text(c, "Imprimir al 100 % (tamaño real) · A4 horizontal · EVA 5 mm · línea gruesa = corte", 0.9, 19.55 if code != "P1" else 20.45, 6.8, "LS", GRAYT)
+    text(c, f"HOJA {code} · {title}", 0.8, 20.05, 9.5, "LS-B", BROWN)
+    text(c, "Imprimir al 100 % (tamaño real) · A4 horizontal · línea negra gruesa = corte · discontinuas = guías", 0.8, 19.72, 6.6, "LS", GRAYT)
     ruler(c)
 
 
-def label_in(c, poly, s, size=7, color=DARK, font="LS-B", dy=0.0, dx=0.0):
+def notes(c, x, y, w, lines, title=None, size=7.2, lh=0.46):
+    n = len(lines) + (1 if title else 0)
+    h = n * lh + 0.4
+    box(c, x, y - h, w, h, fill=CREAM)
+    yy = y - 0.5
+    if title:
+        text(c, title, x + 0.3, yy, 8, "LS-B", BROWN)
+        yy -= lh
+    for ln in lines:
+        text(c, ln, x + 0.3, yy, size, "LS", DARK)
+        yy -= lh
+    return y - h
+
+
+def label(c, poly, s, size=7.5, color=DARK, font="LS-B", dx=0.0, dy=0.0, rot=0):
     p = poly.representative_point()
-    text(c, s, p.x + dx, p.y - size / 2 / CM * 0.7 + dy, size, font, color, "c")
+    text(c, s, p.x + dx, p.y - size * 0.012 + dy, size, font, color, "c", rot)
 
 
-def page_p1(c):
-    c.setPageSize((G.PAGE_W * CM, G.PAGE_H * CM))
-    items = G.layout_p1()
-    A = items["A"]
-    pattern_header(c, "P1", "A · CUERPO DEL BRAZAL ×2")
-    ob = G.body()
-    dx, dy = A.bounds[0] - ob.bounds[0], A.bounds[1] - ob.bounds[1]
+def page_p1(c, n=None):
+    items = layout_p1()
+    B = items["BASE"]
+    ob = G.base()
+    dx, dy = B.bounds[0] - ob.bounds[0], B.bounds[1] - ob.bounds[1]
 
-    def pt(px, py):
-        return (px + dx, py + dy)
+    def T_(geom_):
+        return affinity.translate(geom_, dx, dy)
 
-    draw_poly(c, A, fill=None, stroke=DARK, lw=1.6)
-    # guías de cinchas
-    for k, s in enumerate(G.STRAP_S, 1):
-        for off in (-G.STRAP_W / 2, G.STRAP_W / 2):
-            r = R1 - s + off
-            a_start = -TH / 2 + 0.5 / r
-            draw_line(c, arc_line(r, a_start, TH / 2, 60), GUIDE, 0.8, (4, 2.5), dx, dy)
-        r = R1 - s
-        text(c, f"B{k}", pt(r * math.sin(-TH / 2 + 0.75 / r + 0.02), r * math.cos(-TH / 2 + 0.75 / r + 0.02))[0] + 0.55,
-             pt(0, r)[1] - 0.12 - (R1 - s - (R1 - s)) , 7.5, "LS-B", GUIDE, "c") if False else None
-        lx, ly = pt(r * math.sin(-TH / 2 + 1.6 / r), r * math.cos(-TH / 2 + 1.6 / r))
-        text(c, f"cincha B{k}", lx, ly - 0.1, 7, "LS-B", GUIDE, "l")
-    # guías de ribetes
-    for r, nm in ((R1 - G.RIM_W, "ribete C (arriba)"), (R2 + G.RIM_W, "ribete D (abajo)")):
-        draw_line(c, arc_line(r, -TH / 2, TH / 2, 80), colors.HexColor("#8E8E8E"), 0.6, (1.5, 2.5), dx, dy)
+    def pt(x, y):
+        return (x + dx, y + dy)
+
+    G.check(items, "P1", top_limit=None)
+    text(c, "HOJA P1 · 1 · BASE ×2", 0.8, 20.05, 9.5, "LS-B", BROWN)
+    text(c, "Imprimir al 100 % · A4 horizontal · EVA 5 mm", 0.8, 19.72, 6.6, "LS", GRAYT)
+    ruler(c, 0.9, 1.0, vertical=True)
+    draw_poly(c, B, stroke=DARK, lw=1.6)
+    # eje
+    draw_line(c, [pt(0, G.R_at(G.BASE_Y0)), pt(0, G.R_at(G.BASE_Y1) + 2.0)], colors.HexColor("#B5B5B5"), 0.5, (6, 3, 1, 3))
+    # zona del puño
+    arc = LineString([G.pol(G.R_at(G.CUFF_Y1), -G.THETA / 2 - 0.1 + i * (G.THETA + 0.2) / 120) for i in range(121)])
+    seg = arc.intersection(ob)
+    for g in getattr(seg, "geoms", [seg]):
+        draw_line(c, list(T_(g).coords), colors.HexColor("#7A7A7A"), 0.8, (2, 2))
+    mx, my = pt(*G.arc_xy(-7.2, (G.BASE_Y0 + G.CUFF_Y1) / 2 - 0.15))
+    text(c, "zona del puño (3): se pega encima, 2 cm", mx, my, 6.8, "LS-I", GRAYT, "c")
+    # panel proyectado
+    pan = G.to_base(G.panel_outline())
+    draw_poly(c, T_(pan), stroke=BROWN, lw=1.0, dash=(5, 2.5))
+    for sl in G.slots():
+        draw_poly(c, T_(G.to_base(sl)), stroke=BROWN, lw=0.6)
+    # cinchas (tramos sobre la base)
+    for k, y in enumerate(G.STRAP_Y, 1):
+        band = G.ring_piece(y - G.STRAP_W / 2, y + G.STRAP_W / 2, 0.0).difference(pan.buffer(0.02))
+        for g in getattr(band, "geoms", [band]):
+            draw_poly(c, T_(g), stroke=GUIDE, lw=0.8, dash=(3.5, 2))
+        lx, ly = pt(*G.arc_xy(-(G.circ_at(y) - G.GAP) / 2 + 1.0, y - 0.13))
+        text(c, f"B{k}a", lx, ly, 7, "LS-B", GUIDE)
+        rx, ry = pt(*G.arc_xy((G.circ_at(y) - G.GAP) / 2 - 1.0, y - 0.13))
+        text(c, f"B{k}p →", rx, ry, 7, "LS-B", GUIDE, "r")
     # daga
-    top = R1 - 1.6
-    parts = [
-        affinity.translate(G.sheath_base(), 0, top - 7.5 - 0.0 + 0.0),
-    ]
-    y_top = top
-    sheath = affinity.translate(G.sheath_base(), 0, y_top - G.size(G.sheath_base())[1])
-    gy = sheath.bounds[1] - 0.8
-    guard = affinity.translate(G.guard(), 0, gy)
-    gripy = guard.bounds[1] - 4.6
-    grip = affinity.translate(G.grip(), 0, gripy)
-    pom = affinity.translate(G.pommel(), 0, grip.bounds[1] - 0.75)
-    for p_ in (sheath, guard, grip, pom):
-        draw_poly(c, p_, fill=None, stroke=ACCENT, lw=1.0, dash=(5, 3), ox=dx, oy=dy)
-    text(c, "GUÍA DE LA DAGA", *pt(0, sheath.bounds[3] + 0.0), 6.5, "LS-B", ACCENT, "c") if False else None
-    tx, ty = pt(0.9, sheath.bounds[3] - 0.45)
-    text(c, "guía daga (solo 1 brazal)", tx, ty, 6.5, "LS-B", ACCENT, "l")
-    # eje central
-    draw_line(c, [(0, R2 + 0.0), (0, R1)], colors.HexColor("#B0B0B0"), 0.5, (6, 3, 1, 3), dx, dy)
-    # etiquetas de bordes
-    for sign, ang in ((-1, math.degrees(math.atan2(math.cos(TH / 2), -math.sin(TH / 2)))), (1, math.degrees(math.atan2(math.cos(TH / 2), math.sin(TH / 2))))):
-        r_mid = (R1 + R2) / 2 + (0.0 if sign < 0 else 0.0)
-        a = sign * TH / 2
-        # punto sobre el borde, desplazado 0,45 cm hacia el interior
-        ex, ey = r_mid * math.sin(a), r_mid * math.cos(a)
-        nx, ny = -sign * math.cos(a), sign * math.sin(a)   # normal hacia el interior (aprox.)
-        nx, ny = (math.cos(TH / 2) * (-sign) * -1, 0)  # placeholder, se recalcula abajo
-        # normal interior: perpendicular a la dirección del borde
-        d = (math.sin(a), math.cos(a))
-        n = (d[1], -d[0]) if sign < 0 else (-d[1], d[0])
-        X, Y = pt(ex + n[0] * 0.5, ey + n[1] * 0.5)
-        # leer de abajo hacia arriba en el borde izquierdo, de arriba hacia abajo en el derecho
-        if sign < 0:
-            text(c, "BORDE DE CIERRE · lado interior del antebrazo", X, Y, 6.8, "LS-I", GRAYT, "c", ang - 0)
-        else:
-            text(c, "BORDE DE CIERRE · lado interior del antebrazo", X, Y, 6.8, "LS-I", GRAYT, "c", ang - 180 + 0)
-    # textos
-    tx, ty = pt(0, R1 - 0.62)
-    text(c, f"↑ CODO · borde superior · arco {f1(C['L1'])} cm", tx, ty, 7.5, "LS-B", DARK, "c")
-    tx, ty = pt(0, R2 + 0.2)
-    text(c, f"↓ MUÑECA · borde inferior · arco {f1(C['L2'])} cm", tx, ty, 7.5, "LS-B", DARK, "c")
-    mx, my = pt(-6.6, R1 - 5.9)
-    text(c, "A · CUERPO DEL BRAZAL", mx, my + 0.35, 12, "LS-B", BROWN, "c")
-    text(c, "cortar 2 piezas (una por brazal)", mx, my - 0.25, 8, "LS", DARK, "c")
-    text(c, f"largo {f1(G.H)} cm · {f1(math.degrees(TH))}° de abertura", mx, my - 0.8, 7.5, "LS", GRAYT, "c")
-    nx_, ny_ = pt(7.0, R1 - 5.9)
-    text(c, "Termoformar en cono: borde ancho", nx_, ny_ + 0.5, 7.5, "LS", DARK, "c")
-    text(c, "hacia el codo. Los 2 bordes rectos", nx_, ny_ + 0.05, 7.5, "LS", DARK, "c")
-    text(c, "quedan a ~2 cm al cerrar.", nx_, ny_ - 0.4, 7.5, "LS", DARK, "c")
-    text(c, "Líneas azules: guía de cinchas B1–B3 · naranja: guía de daga", nx_, ny_ - 1.0, 6.5, "LS-I", GUIDE, "c")
+    parts = G.dagger_parts()
+    for key in ("sheath", "guard", "grip", "pommel"):
+        poly = parts[key]
+        pts = [pt(*G.arc_xy(G.DAGGER_X + x, G.DAGGER_Y0 + yy)) for x, yy in poly.exterior.coords]
+        path_pts(c, pts, None, ACCENT, 1.0, dash=(4, 2.5))
+    dx_, dy_ = pt(*G.arc_xy(G.DAGGER_X - 1.6, G.DAGGER_Y0 + 13.6))
+    text(c, "daga", dx_, dy_, 6.8, "LS-B", ACCENT, "r")
+    dx_, dy_ = pt(*G.arc_xy(G.DAGGER_X - 1.6, G.DAGGER_Y0 + 13.0))
+    text(c, "(solo izq.)", dx_, dy_, 6.3, "LS-I", ACCENT, "r")
+    # textos principales
+    tx, ty = pt(*G.arc_xy(G.PEAK_C, G.BASE_Y1 + G.PEAK_H - 1.0))
+    text(c, "PICO ↑ hacia el codo (posterior)", tx, ty, 7.5, "LS-B", DARK, "c")
+    tx, ty = pt(*G.arc_xy(0, G.BASE_Y0 + 0.35))
+    text(c, "↓ MUÑECA · borde inferior", tx, ty, 7.5, "LS-B", DARK, "c")
+    mx, my = pt(*G.arc_xy(-6.4, 10.0))
+    text(c, "1 · BASE", mx, my + 0.3, 14, "LS-B", BROWN, "c")
+    text(c, "cortar 2 · capa oscura", mx, my - 0.25, 8, "LS", DARK, "c")
+    mx2, my2 = pt(*G.arc_xy(6.6, 10.0))
+    text(c, "IZQUIERDA: plantilla tal cual", mx2, my2 + 0.3, 7.8, "LS-B", DARK, "c")
+    text(c, "DERECHA: plantilla del revés", mx2, my2 - 0.15, 7.8, "LS-B", DARK, "c")
+    text(c, "(el pico y las puntas cambian de lado)", mx2, my2 - 0.6, 6.8, "LS-I", GRAYT, "c")
+    # bordes de cierre
+    for sgn, s_lab in ((-1, "BORDE ANTERIOR · hebillas (fuera del PDF)"), (1, "BORDE POSTERIOR · puntas de las cinchas")):
+        ang = math.degrees(math.atan2(math.cos(G.THETA / 2), sgn * math.sin(G.THETA / 2)))
+        s = sgn * ((G.circ_at(11.5) - G.GAP) / 2 - 0.55)
+        X, Y = pt(*G.arc_xy(s, 11.6))
+        text(c, s_lab, X, Y, 6.6, "LS-I", GRAYT, "c", ang if sgn < 0 else ang - 180)
+    # leyenda
+    lx = 23.9
+    for i, (col_, dash_, lab) in enumerate([(BROWN, (5, 2.5), "panel (2) y ranuras"), (GUIDE, (3.5, 2), "tramos de cincha B·a / B·p"),
+                                            (ACCENT, (4, 2.5), "daga (brazo izq.)"), (colors.HexColor("#7A7A7A"), (2, 2), "borde del puño")]):
+        yy = 19.3 - i * 0.45
+        draw_line(c, [(lx, yy + 0.08), (lx + 0.9, yy + 0.08)], col_, 1.0, dash_)
+        text(c, lab, lx + 1.1, yy, 6.8, "LS", DARK)
+    text(c, "Leyenda de guías", lx, 19.75, 7.2, "LS-B", BROWN)
+    # comprobaciones de espacio libre
+    boxes = [("titulo", sbox(0.8, 19.6, 9.5, 20.4)), ("regla", sbox(0.8, 0.9, 1.9, 11.1)), ("leyenda", sbox(23.8, 17.7, 28.9, 20.1))]
+    G.check(items, "P1-textos", top_limit=None, boxes=boxes)
 
 
 def page_p2(c):
-    c.setPageSize((G.PAGE_W * CM, G.PAGE_H * CM))
-    items = G.layout_p2()
-    pattern_header(c, "P2", "B · CINCHAS ×6 + C · RIBETES SUPERIORES ×2")
-    for k, poly in items.items():
-        draw_poly(c, poly, stroke=DARK, lw=1.4)
-    for k, poly in items.items():
+    items = layout_p2()
+    G.check(items, "P2")
+    pattern_header(c, "P2", "2 · PANELES ×2 + CINCHAS CENTRALES + DAGA")
+    for k, p in items.items():
+        draw_poly(c, p, stroke=DARK, lw=1.3)
+    po = G.panel()
+    for k in ("P.izq", "P.der"):
+        P = items[k]
+        ox, oy = P.bounds[0] - po.bounds[0], P.bounds[1] - po.bounds[1]
+        stitch = G.panel_outline().buffer(-0.45)
+        draw_poly(c, stitch, stroke=GUIDE, lw=0.6, dash=(1.5, 1.8), ox=ox, oy=oy)
+        for y in G.STRAP_Y:   # guía de la cincha central entre ranuras
+            half = G.R_at(y, G.T) * G.panel_angle() / 2 - G.SLOT_IN
+            for off in (-G.STRAP_W / 2, G.STRAP_W / 2):
+                r = G.R_at(y, G.T) + off
+                pts = [G.pol(r, (-half + 2 * half * i / 30) / r) for i in range(31)]
+                draw_line(c, pts, colors.HexColor("#9A9A9A"), 0.5, (2, 2), ox, oy)
+        cx, cy = G.arc_xy(0, (G.PANEL_Y0 + G.PANEL_Y1) / 2 + 0.4, G.T)
+        text(c, "2 · PANEL", cx + ox, cy + oy + 0.1, 10, "LS-B", BROWN, "c")
+        text(c, "izquierdo (con daga)" if k == "P.izq" else "derecho", cx + ox, cy + oy - 0.35, 7, "LS", DARK, "c")
+        tx, ty = G.arc_xy(0, G.PANEL_Y1 - 0.65, G.T)
+        text(c, "↑ codo", tx + ox, ty + oy, 6.8, "LS-I", GRAYT, "c")
+        text(c, "ranuras = cortar (huecos)", cx + ox, cy + oy - 0.8, 6.3, "LS-I", GRAYT, "c")
+        if k == "P.izq":
+            parts = G.dagger_parts()
+            for key in ("sheath", "guard", "grip", "pommel"):
+                pts = [G.arc_xy(G.DAGGER_X + x, G.DAGGER_Y0 + yy, G.T) for x, yy in parts[key].exterior.coords]
+                clip = Polygon(pts).intersection(G.panel_outline())
+                if not clip.is_empty:
+                    draw_poly(c, clip, stroke=ACCENT, lw=0.9, dash=(4, 2.5), ox=ox, oy=oy)
+            tx, ty = G.arc_xy(G.DAGGER_X, G.PANEL_Y1 - 1.3, G.T)
+            text(c, "guía daga", tx + ox, ty + oy, 6.3, "LS-B", ACCENT, "c")
+    for k, p in items.items():
         if k.startswith("B"):
-            ln = G.size(poly)[0]
-            n = k.split(".")[0]
-            minx, miny, maxx, maxy = poly.bounds
-            text(c, f"{n} · cincha {k.split('.')[1]}/2 · {f1(ln)} × 1,5 cm  (punta a la derecha)", minx + 0.5, miny + 0.55, 7, "LS-B", DARK, "l")
-        else:
-            label_in(c, poly, k, 7)
-    # nota
-    box(c, 15.0, 17.7 - 0.3, 13.0, 1.7, fill=CREAM)
-    y = 17.55 + 0.1
-    lines = ["C1, C2 · ribetes superiores en arco (1,0 cm de ancho): van a ras del borde superior del cuerpo A.",
-             "B1 (la más larga) va arriba; B3 (la más corta) abajo. Bisela los cantos y la punta.",
-             "Cada cincha: 0,5 cm de margen en el borde izquierdo y ~1,5 cm de punta libre a la derecha."]
-    for i, l in enumerate(lines):
-        text(c, l, 15.2, 18.85 - i * 0.45, 6.8, "LS", DARK)
+            ln = G.size(p)[0]
+            name = k.strip()
+            text(c, f"{name} · {f1(ln)} × 1,4", p.bounds[0] + 0.35, p.bounds[1] + 0.5, 6.8, "LS-B", DARK)
+        elif k[0] in "GH":
+            label(c, p, k.split(".")[0], 6.5 if k[0] == "H" else 7.5)
+    G1 = items["G2"]
+    draw_poly(c, G1.buffer(-0.22), stroke=GUIDE, lw=0.5, dash=(1.5, 1.5))
+    x0 = items["G1"].bounds[0]
+    notes(c, 22.9, min(items["H2.2"].bounds[1], items["H3.1"].bounds[1]) - 0.35, 6.2,
+          ["G1 base y G2 tapa de la funda (1 de cada).", "H1 empuñadura, H2 guarda, H3 pomo:", "2 capas de cada (10 mm).",
+           "B·c entran 0,6 cm en las ranuras.", "B1c·daga y B2c·daga: brazo izq.", "(pasan por encima de la funda)."],
+          "Daga y cinchas centrales")
 
 
 def page_p3(c):
-    c.setPageSize((G.PAGE_W * CM, G.PAGE_H * CM))
-    items = G.layout_p3()
-    pattern_header(c, "P3", "E · PUÑOS ×2 + F · PLACAS DE MANO ×2")
-    for k, poly in items.items():
-        draw_poly(c, poly, stroke=DARK, lw=1.4)
-    for k in ("E1", "E2"):
-        label_in(c, items[k], f"{k} · PUÑO", 8, dy=0.0)
-        minx, miny, maxx, maxy = items[k].bounds
-    # guías placa: rotadas
-    pl = G.plate()
-    plr = affinity.rotate(pl, 90, origin=(0, 0))
-    for k in ("F1", "F2"):
+    items = layout_p3()
+    G.check(items, "P3")
+    pattern_header(c, "P3", "3 · PUÑOS ×2 + CINCHAS ANTERIORES Y POSTERIORES")
+    for k, p in items.items():
+        draw_poly(c, p, stroke=DARK, lw=1.3)
+    for k in ("PUÑO.1", "PUÑO.2"):
         P = items[k]
-        ox, oy = P.bounds[0] - plr.bounds[0], P.bounds[1] - plr.bounds[1]
-        inner = affinity.rotate(pl.buffer(-0.6), 90, origin=(0, 0))
-        draw_poly(c, inner, stroke=GUIDE, lw=0.8, dash=(3, 2.5), ox=ox, oy=oy)
-        tabline = affinity.rotate(LineString([(-4.2, -G.PLATE_TAB), (4.2, -G.PLATE_TAB)]), 90, origin=(0, 0))
-        draw_line(c, list(tabline.coords), ACCENT, 0.9, (4, 2), ox, oy)
-        label_in(c, P, f"{k} · PLACA DE MANO", 8, dx=0.2, dy=0.35)
-        mx, my = P.representative_point().x + 0.2, P.representative_point().y
-        text(c, "línea de grabado a 0,6 cm", mx, my - 0.15, 6.5, "LS-I", GUIDE, "c")
-        text(c, f"{f1(G.size(P)[0])} × {f1(G.size(P)[1])} cm", mx, my - 0.65, 6.5, "LS", GRAYT, "c")
-        # marcar zona de pegado
-        bx = P.bounds[0]
-        text(c, "← muñeca", bx + 0.25, P.bounds[1] - 0.0 + G.size(P)[1] + 0.12, 6.3, "LS-I", GRAYT, "l")
-        text(c, "nudillos →", P.bounds[2] - 0.25, P.bounds[1] - 0.0 + G.size(P)[1] + 0.12, 6.3, "LS-I", GRAYT, "r")
-        text(c, "pegar 1,5 cm", bx + 0.75, P.bounds[1] + 0.25, 6, "LS-B", ACCENT, "c", 90) if False else None
-    box(c, 21.5, 0.9 + 0.0, 6.9, 8.0, fill=CREAM) if False else None
-    # notas (zona libre derecha del puño)
-    nx = 1.2 + G.size(items["E1"])[0] + 0.8
-    ny = items["E2"].bounds[3] - 0.2
-    lines = ["E · puño (cono continuo del cuerpo):",
-             f"  arco sup. {f1(C['L2'])} cm · arco inf. {f1((R2 - 3) * TH)} cm · alto 3,0 cm.",
-             "  Une a tope (bisel 45°) con el borde inferior de A.",
-             "F · placa: curva a lo ancho sobre el dorso.",
-             "  Línea naranja = zona de 1,5 cm que se pega sobre E.",
-             "  Línea azul = grabado decorativo (opcional)."]
-    for i, l in enumerate(lines):
-        text(c, l, nx, ny - i * 0.42, 6.8, "LS-B" if not l.startswith(" ") else "LS", DARK)
+        cf = G.cuff()
+        ox, oy = P.bounds[0] - cf.bounds[0], P.bounds[1] - cf.bounds[1]
+        arc = LineString([G.pol(G.R_at(G.BASE_Y0, G.T), -G.THETA / 2 - 0.1 + i * (G.THETA + 0.2) / 120) for i in range(121)]).intersection(cf)
+        for g in getattr(arc, "geoms", [arc]):
+            draw_line(c, list(g.coords), ACCENT, 0.9, (4, 2), ox, oy)
+        cx, cy = G.arc_xy(0, 4.1, G.T)
+        text(c, "3 · PUÑO", cx + ox, cy + oy - 0.1, 9, "LS-B", BROWN, "c")
+        cx, cy = G.arc_xy(-6.5, 3.6, G.T)
+        text(c, "zona pegada sobre la base (2 cm)", cx + ox, cy + oy, 6.5, "LS-I", GRAYT, "c")
+        cx, cy = G.arc_xy(6.5, 2.35, G.T)
+        text(c, "vuelo 1 cm (bisagra) ↓", cx + ox, cy + oy, 6.5, "LS-I", ACCENT, "c")
+    for k, p in items.items():
+        if k.startswith("B"):
+            name = k.split(".")[0]
+            kind = "posterior · punta →" if name.endswith("p") else "anterior · a la hebilla"
+            text(c, f"{name} {kind} · {f1(G.size(p)[0])} cm", p.bounds[0] + 0.3, p.bounds[1] + 0.5, 6.5, "LS-B", DARK)
+    notes(c, 23.2, items["PUÑO.1"].bounds[3], 5.9,
+          ["Puño: 2 iguales.", "La línea naranja marca el", "borde inferior de la base.",
+           "Cinchas ×12: B·a (anterior)", "y B·p (posterior, con punta)."], "Notas")
 
 
 def page_p4(c):
-    c.setPageSize((G.PAGE_W * CM, G.PAGE_H * CM))
-    items = G.layout_p4()
-    pattern_header(c, "P4", "D · RIBETES INFERIORES ×2 + DAGA (G, H)")
-    for k, poly in items.items():
-        draw_poly(c, poly, stroke=DARK, lw=1.4)
-    for k, poly in items.items():
-        if k.startswith("D"):
-            label_in(c, poly, k, 7)
-        elif k in ("G1", "G2"):
-            p = poly.representative_point()
-            text(c, k, p.x, p.y - 0.1, 8, "LS-B", DARK, "c")
-        else:
-            p = poly.representative_point()
-            text(c, k.split(".")[0], p.x, p.y - 0.1, 6.5, "LS-B", DARK, "c")
-    # grabado de la tapa
-    inner = items["G2"].buffer(-0.25)
-    if not inner.is_empty:
-        draw_poly(c, inner, stroke=GUIDE, lw=0.7, dash=(2, 2))
-    # cuadro de notas (zona libre superior)
-    box(c, 1.0, 13.9, 27.6, 5.2, fill=CREAM)
-    lines = [("D1, D2 · ribetes inferiores (arco, 1,0 cm de ancho): a ras del borde inferior del cuerpo, cara exterior.", False),
-             ("Daga fija (sin hoja), solo para un brazal:", True),
-             ("G1 · base de la funda (cortar 1) → se pega sobre las cinchas.", False),
-             ("G2 · tapa de la funda (cortar 1) → se pega centrada sobre G1; deja un escalón de 3 mm. Línea azul = costura grabada.", False),
-             ("H1 · empuñadura: pegar H1.1 + H1.2 (10 mm de grosor) y marcar el cordón con cortes oblicuos cada ~4 mm.", False),
-             ("H2 · guarda: pegar H2.1 + H2.2 y biselar los extremos.   H3 · pomo: pegar H3.1 + H3.2 y redondear con lija.", False),
-             ("Orden de abajo arriba (hacia el codo): pomo → empuñadura → guarda → funda.", True),
-             ("La funda apunta al codo; la posición exacta está en la guía naranja de la hoja P1.", False)]
-    yy = 18.4
-    for t_, b_ in lines:
-        text(c, t_, 1.4, yy, 7.2, "LS-B" if b_ else "LS", DARK)
-        yy -= 0.58
+    items = layout_p4()
+    G.check(items, "P4")
+    pattern_header(c, "P4", "4A · GUARDA DE MANO · PLACA ÚNICA ×2")
+    g = G.guard_plate()
+    for k, P in items.items():
+        draw_poly(c, P, stroke=DARK, lw=1.4)
+        ox, oy = P.bounds[0] - g.bounds[0], P.bounds[1] - g.bounds[1]
+        draw_poly(c, g.buffer(-0.6), stroke=GUIDE, lw=0.7, dash=(3, 2.5), ox=ox, oy=oy)
+        hinge = LineString([(-5, G.GUARD_TOP - 1.0), (5, G.GUARD_TOP - 1.0)]).intersection(g)
+        draw_line(c, list(hinge.coords), ACCENT, 0.9, (4, 2), ox, oy)
+        text(c, "bisagra: zona bajo el puño (1 cm)", ox, G.GUARD_TOP - 0.6 + oy, 6.5, "LS-B", ACCENT, "c")
+        text(c, "4A · GUARDA", ox, -3.5 + oy, 10, "LS-B", BROWN, "c")
+        text(c, "placa única · cortar 2", ox, -4.0 + oy, 7.2, "LS", DARK, "c")
+        text(c, "línea azul: grabado a 0,6 cm", ox, -4.5 + oy, 6.5, "LS-I", GUIDE, "c")
+        text(c, "↑ muñeca", ox, 0.8 + oy, 6.8, "LS-I", GRAYT, "c")
+        text(c, "↓ nudillos", ox, -9.1 + oy, 6.8, "LS-I", GRAYT, "c")
+        text(c, sz(g) + " cm", ox, -5.0 + oy, 6.5, "LS", GRAYT, "c")
+    notes(c, 20.6, 19.4, 8.0,
+          ["Simétrica: sirve para los dos brazos.", "Curva la placa a lo ancho sobre el", "dorso de la mano (botella Ø 5–6 cm).",
+           "La franja superior (naranja) queda", "bajo el vuelo del puño y lleva la", "bisagra pegada por dentro.",
+           "Remaches y lazo del dedo: fuera."], "Versión A · notas")
 
 
-
-# ------------------------------------------------------------------ figuras del tutorial
-def figbox(c, x, yt, w, h, title):
-    box(c, x, yt - h, w, h, fill=colors.white)
-    text(c, title, x + w / 2, yt - 0.5, 8, "LS-B", BROWN, "c")
-
-
-def _poly(c, pts, fill, stroke=DARK, lw=0.7):
-    p = c.beginPath()
-    for i, (X, Y) in enumerate(pts):
-        (p.moveTo if i == 0 else p.lineTo)(X * CM, Y * CM)
-    p.close()
-    c.saveState()
-    c.setFillColor(fill)
-    c.setStrokeColor(stroke)
-    c.setLineWidth(lw)
-    c.drawPath(p, stroke=1, fill=1)
-    c.restoreState()
-
-
-def fig_cut(c, x, yt, w=5.7, h=4.3):
-    figbox(c, x, yt, w, h, "Corte: cuchilla a 90°")
-    y0 = yt - 3.0
-    _poly(c, [(x + 0.7, y0), (x + 5.0, y0), (x + 5.0, y0 + 0.9), (x + 0.7, y0 + 0.9)], LEATHER)
-    cx = x + 2.9
-    _poly(c, [(cx - 0.18, y0 + 1.9), (cx + 0.18, y0 + 1.9), (cx + 0.02, y0 + 0.9), (cx - 0.02, y0 + 0.9)], STEEL)
-    c.saveState(); c.setStrokeColor(ACCENT); c.setLineWidth(0.8)
-    c.line((cx + 0.35) * CM, y0 * CM, (cx + 0.35) * CM, (y0 + 0.9) * CM)
-    c.line((cx + 0.35) * CM, y0 * CM, (cx + 0.85) * CM, y0 * CM)
-    c.restoreState()
-    text(c, "90°", cx + 0.55, y0 + 0.2, 7, "LS-B", ACCENT)
-    text(c, "2–3 pasadas suaves, nunca una fuerte", x + w / 2, yt - 3.85, 6.8, "LS", DARK, "c")
+def page_p5(c):
+    items = layout_p5()
+    G.check(items, "P5")
+    pattern_header(c, "P5", "4B · GUARDA SEGMENTADA · BASES ×2 + BANDAS ×2")
+    gb = G.guard_seg_base()
+    for k, P in items.items():
+        draw_poly(c, P, stroke=DARK, lw=1.4)
+    for k in ("GB.1", "GB.2"):
+        P = items[k]
+        ox, oy = P.bounds[0] - gb.bounds[0], P.bounds[1] - gb.bounds[1]
+        for i in range(4):
+            draw_poly(c, G.guard_strip(i), stroke=GUIDE, lw=0.6, dash=(3, 2), ox=ox, oy=oy)
+            p = G.guard_strip(i).representative_point()
+            text(c, f"L{i + 1}", p.x + ox, p.y + oy - 1.5, 6.5, "LS-B", GUIDE, "c")
+        draw_poly(c, G.guard_band(), stroke=ACCENT, lw=0.7, dash=(4, 2), ox=ox, oy=oy)
+        text(c, "4B · BASE", ox, -4.6 + oy, 9, "LS-B", BROWN, "c")
+        text(c, "(oscura) cortar 2", ox, -5.05 + oy, 6.8, "LS", DARK, "c")
+        text(c, "banda", ox, 1.55 + oy, 6.5, "LS-B", ACCENT, "c")
+    for k in ("BANDA.1", "BANDA.2"):
+        label(c, items[k], "BANDA (marrón)", 7)
+    notes(c, items["BANDA.1"].bounds[0], items["BANDA.2"].bounds[1] - 0.4, 8.0,
+          ["Base oscura: azul = posición de las", "láminas L1–L4 (hoja P6).", "Naranja = posición de la banda.",
+           "Orden: base → láminas → banda.", "La banda tapa el inicio de las", "láminas y lleva la bisagra."], "Versión B · notas")
 
 
-def fig_bevel(c, x, yt, w=5.7, h=4.3):
-    figbox(c, x, yt, w, h, "Unión a tope con bisel de 45°")
-    y0 = yt - 2.7
-    _poly(c, [(x + 0.4, y0), (x + 3.0, y0), (x + 2.1, y0 + 0.9), (x + 0.4, y0 + 0.9)], BROWN)
-    _poly(c, [(x + 3.0, y0), (x + 5.3, y0), (x + 5.3, y0 + 0.9), (x + 2.1, y0 + 0.9)], COL["cuff"])
-    _poly(c, [(x + 1.9, y0 - 0.15), (x + 3.7, y0 - 0.15), (x + 3.7, y0), (x + 1.9, y0)], colors.HexColor("#9AA0A6"), lw=0.4)
-    text(c, "cuerpo A", x + 1.1, y0 + 0.28, 6.5, "LS-B", colors.white, "c")
-    text(c, "puño E", x + 4.4, y0 + 0.28, 6.5, "LS-B", colors.white, "c")
-    text(c, "tira de tela por dentro", x + 2.8, y0 - 0.5, 6.5, "LS-I", GRAYT, "c")
-    text(c, "pegar y presionar", x + w / 2, yt - 3.85, 6.8, "LS", DARK, "c")
-
-
-def fig_strap(c, x, yt, w=5.7, h=4.3):
-    figbox(c, x, yt, w, h, "Cincha sobre el cuerpo")
-    y0 = yt - 3.0
-    _poly(c, [(x + 0.5, y0), (x + 4.1, y0), (x + 4.1, y0 + 2.0), (x + 0.5, y0 + 2.0)], BROWN)
-    _poly(c, [(x + 0.9, y0 + 0.6), (x + 4.3, y0 + 0.6), (x + 5.0, y0 + 0.95), (x + 4.3, y0 + 1.3), (x + 0.9, y0 + 1.3)], COL["strap"])
-    c.saveState(); c.setStrokeColor(ACCENT); c.setLineWidth(0.7)
-    c.line((x + 0.5) * CM, (y0 + 0.35) * CM, (x + 0.9) * CM, (y0 + 0.35) * CM)
-    c.line((x + 4.1) * CM, (y0 + 0.35) * CM, (x + 5.0) * CM, (y0 + 0.35) * CM)
-    c.restoreState()
-    text(c, "0,5", x + 0.7, y0 + 0.1, 6.5, "LS-B", ACCENT, "c")
-    text(c, "1,5 libre", x + 4.55, y0 + 0.1, 6.5, "LS-B", ACCENT, "c")
-    text(c, "borde de cierre ↓", x + 4.1, y0 + 2.12, 6.3, "LS-I", GRAYT, "r")
-    text(c, "empieza dentro, termina saliendo", x + w / 2, yt - 3.85, 6.8, "LS", DARK, "c")
-
-
-def fig_ring(c, x, yt, w=5.7, h=4.3):
-    figbox(c, x, yt, w, h, "Vista superior: hueco de cierre")
-    cx, cy, r = x + w / 2, yt - 1.8, 1.2
-    gap = 2.0 / (G.TOP_SKIN / (2 * math.pi) + 0.5)
-    a0, a1 = -math.pi / 2 + gap / 2, -math.pi / 2 + 2 * math.pi - gap / 2
-    pts = [(cx + r * math.cos(a0 + (a1 - a0) * i / 60), cy + r * math.sin(a0 + (a1 - a0) * i / 60)) for i in range(61)]
-    c.saveState(); c.setStrokeColor(BROWN); c.setLineWidth(5); c.setLineCap(1)
-    p = c.beginPath(); p.moveTo(pts[0][0] * CM, pts[0][1] * CM)
-    for X, Y in pts[1:]:
-        p.lineTo(X * CM, Y * CM)
-    c.drawPath(p, stroke=1, fill=0)
-    c.setStrokeColor(colors.HexColor("#E0B88F")); c.setLineWidth(0.8); c.setDash(2, 2)
-    c.circle(cx * CM, cy * CM, (r - 0.45) * CM, stroke=1, fill=0)
-    c.restoreState()
-    text(c, "antebrazo", cx, cy - 0.1, 6.5, "LS-I", GRAYT, "c")
-    text(c, "hueco ≈ 2 cm", cx, cy - r - 0.5, 6.8, "LS-B", ACCENT, "c")
-    text(c, "(lado interior del antebrazo)", x + w / 2, yt - 3.85, 6.8, "LS", DARK, "c")
-
-
-def fig_heat(c, x, yt, w=5.7, h=4.3):
-    figbox(c, x, yt, w, h, "Termoformado")
-    cy = yt - 1.9
-    _poly(c, [(x + 0.4, cy - 0.3), (x + 1.5, cy - 0.3), (x + 1.5, cy + 0.3), (x + 0.4, cy + 0.3)], colors.HexColor("#555555"))
-    _poly(c, [(x + 1.5, cy - 0.15), (x + 2.0, cy - 0.12), (x + 2.0, cy + 0.12), (x + 1.5, cy + 0.15)], colors.HexColor("#888888"))
-    _poly(c, [(x + 2.0, cy - 0.1), (x + 3.7, cy - 0.7), (x + 3.7, cy + 0.7), (x + 2.0, cy + 0.1)], colors.HexColor("#FBD9B5"), stroke=ACCENT, lw=0.4)
-    c.saveState(); c.setStrokeColor(BROWN); c.setLineWidth(5); c.setLineCap(1)
-    p = c.beginPath()
-    for i in range(41):
-        a = -0.8 + 1.6 * i / 40
-        X, Y = x + 3.9 + 0.85 * math.cos(a) - 0.5 + 0.45, cy + 1.0 * math.sin(a)
-        (p.moveTo if i == 0 else p.lineTo)(X * CM, Y * CM)
-    c.drawPath(p, stroke=1, fill=0)
-    c.setStrokeColor(ACCENT); c.setLineWidth(0.7)
-    c.line((x + 2.0) * CM, (cy - 0.95) * CM, (x + 3.8) * CM, (cy - 0.95) * CM)
-    c.restoreState()
-    text(c, "15–20 cm", x + 2.9, cy - 1.3, 6.8, "LS-B", ACCENT, "c")
-    text(c, "mover siempre · sujetar hasta enfriar", x + w / 2, yt - 3.85, 6.8, "LS", DARK, "c")
-
-
-def fig_overlap(c, x, yt, w=5.7, h=4.3):
-    figbox(c, x, yt, w, h, "Placa sobre el puño (vista lateral)")
-    y0 = yt - 3.0
-    _poly(c, [(x + 0.4, y0), (x + 3.2, y0), (x + 3.2, y0 + 0.8), (x + 0.4, y0 + 0.8)], COL["cuff"])
-    _poly(c, [(x + 2.0, y0 + 0.8), (x + 5.3, y0 + 0.8), (x + 5.3, y0 + 1.6), (x + 2.0, y0 + 1.6)], COL["plate"])
-    c.saveState(); c.setStrokeColor(ACCENT); c.setLineWidth(0.7)
-    c.line((x + 2.0) * CM, (y0 + 1.95) * CM, (x + 3.2) * CM, (y0 + 1.95) * CM)
-    c.restoreState()
-    text(c, "1,5 cm", x + 2.6, y0 + 2.05, 6.8, "LS-B", ACCENT, "c")
-    text(c, "puño E", x + 1.2, y0 + 0.25, 6.5, "LS-B", colors.white, "c")
-    text(c, "placa F", x + 4.2, y0 + 1.0, 6.5, "LS-B", colors.white, "c")
-    text(c, "la zona marcada en naranja en P3", x + w / 2, yt - 3.85, 6.8, "LS", DARK, "c")
-
-
-def fig_row(c, yt, figs):
-    x = 1.6
-    for fn in figs:
-        fn(c, x, yt)
-        x += 5.7 + 0.35
-    return yt - 4.3
-
-
-
-def checklist(c, x, ytop, w, title, items, cols=2):
-    rows = (len(items) + cols - 1) // cols
-    h = 0.95 + rows * 0.62
-    box(c, x, ytop - h, w, h, fill=colors.white)
-    text(c, title, x + 0.35, ytop - 0.65, 9.5, "LS-B", BROWN)
-    cw = (w - 0.7) / cols
-    for i, it in enumerate(items):
-        col, row = i // rows, i % rows
-        xx, yy = x + 0.35 + col * cw, ytop - 1.3 - row * 0.62
-        c.saveState(); c.setStrokeColor(DARK); c.setLineWidth(0.7)
-        c.rect(xx * CM, (yy - 0.05) * CM, 0.3 * CM, 0.3 * CM, stroke=1, fill=0)
-        c.restoreState()
-        text(c, it, xx + 0.5, yy + 0.02, 8, "LS", DARK)
-    return ytop - h
+def page_p6(c):
+    items = layout_p6()
+    G.check(items, "P6")
+    pattern_header(c, "P6", "4B · LÁMINAS DE LA GUARDA SEGMENTADA ×8")
+    for k, P in items.items():
+        draw_poly(c, P, stroke=DARK, lw=1.3)
+        label(c, P, k.split(".")[0], 8, rot=0, dy=2.5)
+        text(c, f"{f1(G.size(P)[1])} cm", P.representative_point().x, P.representative_point().y - 1.0, 6, "LS", GRAYT, "c")
+        text(c, "↑", P.representative_point().x, P.bounds[3] - 0.6, 7, "LS-B", GRAYT, "c")
+    notes(c, 0.9, min(p.bounds[1] for p in items.values()) - 0.6, 14.5,
+          ["Cortar 2 juegos (L1, L2, L3, L4 por cada guarda). La flecha ↑ indica el extremo de la muñeca (bajo la banda).",
+           "Bisela un poco los bordes largos y redondea la punta con lija: así se marca la separación entre láminas.",
+           "Pega cada lámina sobre su guía azul de la base (hoja P5), dejando 2–3 mm de base oscura visible entre ellas."],
+          "Notas", lh=0.5)
 
 
 # ================================================================== TUTORIAL
-def steps_block(c, y, steps, x=1.6, w=17.8):
-    for tag, title, body in steps:
-        circ_y = y - 0.32
-        c.setFillColor(ACCENT)
-        c.circle((x + 0.35) * CM, circ_y * CM - 0.3 * CM / 2, 0.38 * CM, stroke=0, fill=1)
-        c.setFillColor(colors.white)
-        c.setFont("LS-B", 9)
-        c.drawCentredString((x + 0.35) * CM, circ_y * CM - 0.3 * CM / 2 - 3.2, str(tag))
-        p = Paragraph(f"<b>{title}.</b> {body}", ST["step"])
-        _, h = p.wrap((w - 1.2) * CM, 1000)
-        p.drawOn(c, (x + 1.1) * CM, y * CM - h)
-        y -= max(h / CM, 0.8) + 0.28
-    return y
-
-
 def page_tut1(c):
-    chrome(c, 10, "PARTE III · TUTORIAL 1/3", "Preparación y corte")
-    y = PH - 2.2
+    chrome(c, 13, TOTAL, "PARTE III · TUTORIAL 1/5", "Preparación y corte")
     steps = [
-        (1, "Prueba de talla en papel",
-         "Imprime la hoja P1, recorta el cuerpo y envuélvelo alrededor del antebrazo con la manga puesta, con el borde ancho hacia el codo. "
-         "Los dos bordes rectos deben quedar separados unos <b>2 cm</b>, en el lado interior. Si te queda justo o sobra mucho, mira la tabla de ajuste "
-         "(pág. 13) <i>antes</i> de cortar goma."),
-        (2, "Imprime a escala real",
-         "Todas las hojas P1–P4 son A4 horizontales. Imprime en <b>«tamaño real» / 100 %</b> y desactiva «ajustar a página» y «reducir al área imprimible». "
-         "Mide la regla de control (10 cm): si no mide exactamente 10,0 cm, corrige la escala y vuelve a imprimir."),
-        (3, "Recorta las plantillas",
-         "Recorta cada pieza por la línea negra gruesa. Las líneas discontinuas (azules, naranjas, grises) y los textos son guías: no se cortan. "
-         "Si vas a repetir el proyecto, pega las hojas sobre cartulina fina para tener plantillas reutilizables."),
-        (4, "Traza sobre la goma",
-         "Coloca la plantilla sobre la cara lisa de la goma EVA y repasa el contorno con rotulador fino (o punzón, que no mancha). Todas las piezas son simétricas, "
-         "no hace falta espejar. Cada hoja de patrón corresponde a una hoja A4 de goma: P1 se traza dos veces. Transfiere también las guías con un punzón, "
-         "apretando poco."),
-        (5, "Corta",
-         "Usa una cuchilla recién partida y una regla metálica para las rectas. Haz <b>varias pasadas suaves</b> en lugar de una fuerte; con 5 mm suelen bastar 2–3. "
-         "Mantén la cuchilla a 90° para que el canto salga vertical y limpio. En curvas gira la goma, no la mano. En piezas pequeñas (guarda, pomo) corta primero el contorno "
-         "con pasadas cortas y ve girando. Corta siempre alejando la mano de la cuchilla."),
-        (6, "Bisela los bordes de unión",
-         "Con el cúter casi plano (o lija 120) rebaja a 45° el borde inferior del cuerpo A y el superior del puño E (se unirán a tope), los extremos de los ribetes C y D y los cantos de las "
-         "cinchas B. <b>No biseles</b> los bordes rectos de cierre del cuerpo: deben quedar firmes."),
+        (1, "Prueba en papel", "Imprime P1 y P2, recorta la base y el panel y pruébatelos con cinta sobre la manga, con el pico hacia el codo. "
+            f"Los bordes de la base deben quedar a unos <b>{f1(G.GAP)} cm</b> en el lado interior del antebrazo y el panel centrado en la cara exterior. "
+            "Si queda justo o sobra, recalcula con la tabla de la pág. 18 antes de cortar goma."),
+        (2, "Imprime a escala real", "Imprime las hojas P1–P6 en <b>«tamaño real» / 100 %</b>, en horizontal y sin «ajustar a página». Mide la regla de control "
+            "(10 cm). Usa el PDF «Guías A4» si solo quieres imprimir las plantillas."),
+        (3, "Recorta las plantillas", "Recorta por la línea negra gruesa, <b>incluidas las ranuras del panel</b> (con cúter). Las líneas discontinuas son guías. "
+            "Pegar las plantillas sobre cartulina te deja unas reutilizables."),
+        (4, "Traza sobre la goma", "Traza sobre la cara lisa con rotulador fino o punzón. Base: una vez tal cual (izquierda) y otra con la plantilla "
+            "<b>del revés</b> (derecha). Marca con un punzón las guías del panel, de las cinchas y de la daga."),
+        (5, "Corta", "Usa una cuchilla nueva y haz 2–3 pasadas suaves con la hoja a 90°. Para las ranuras del panel, corta primero los dos lados largos y luego los cortos, "
+            "o usa un sacabocados de 5 mm en cada extremo y une los dos agujeros con el cúter."),
+        (6, "Bisela", "Rebaja a 45° los extremos de las cinchas centrales (para que entren en las ranuras), el borde superior del puño y los bordes del panel "
+            "si quieres un canto suave. <b>No biseles</b> los bordes de cierre de la base."),
     ]
-    y = steps_block(c, y, steps)
-    y = fig_row(c, y - 0.1, [fig_cut, fig_bevel, fig_strap]) - 0.35
-    box(c, 1.6, y - 3.5, 17.8, 3.5, fill=colors.HexColor("#FFF6E8"), stroke=ACCENT)
+    y = steps_block(c, PH - 2.2, steps)
+    y = fig_row(c, y - 0.05, [fig_cut, fig_slot, fig_ring]) - 0.35
+    items = ["1 · base izq.", "1 · base der. (revés)", "2 · panel ×2", "3 · puño ×2", "4A guarda ×2  o  4B ×2", "4B láminas ×8 (si B)",
+             "B·a ×6", "B·p ×6", "B·c ×6", "G1 · G2", "H1 ×2 · H2 ×2 · H3 ×2", "Ranuras y guías marcadas"]
+    y = checklist(c, 1.6, y, 17.8, "Lista de control del corte", items, cols=3) - 0.4
+    box(c, 1.6, y - 3.4, 17.8, 3.4, fill=WARM, stroke=ACCENT)
     text(c, "Consejos de profesional", 2.0, y - 0.65, 10, "LS-B", ACCENT)
-    tips = [
-        "Antes de gastar goma buena, haz un modelo completo en cartulina o EVA fina: detecta errores de talla en 15 minutos.",
-        "La cuchilla se desafila rápido con EVA densa: cámbiala o parte la punta al notar que «arrastra» el canto.",
-        "Si el canto queda «peludo», pasa una llama rápida de pistola de calor a 15 cm y lija suave: se sella y se alisa.",
-        "Marca con lápiz el codo y la muñeca en cada pieza cortada para no mezclar bordes al montar.",
-    ]
-    yy = y - 0.95
-    for t_ in tips:
-        p = Paragraph(t_, ST["buls"], bulletText="•")
-        _, h = p.wrap(16.8 * CM, 1000)
-        p.drawOn(c, 2.0 * CM, yy * CM - h)
-        yy -= h / CM + 0.1
-    y = y - 3.5 - 0.4
-    items = ["A · cuerpo ×2", "B1 · cincha ×2", "B2 · cincha ×2", "B3 · cincha ×2", "C · ribete sup. ×2", "D · ribete inf. ×2",
-             "E · puño ×2", "F · placa ×2", "G1 · funda base ×1", "G2 · funda tapa ×1", "H1 · empuñadura ×2", "H2 · guarda ×2", "H3 · pomo ×2",
-             "Guías transferidas", "Bordes biselados"]
-    y = checklist(c, 1.6, y, 17.8, "Lista de control del corte", items, cols=3)
-    assert y > 1.8, f"pág 10 desborda {y}"
+    bullets(c, ["Haz primero una bracera completa en cartulina: detectarás errores de talla en 20 minutos.",
+                "Cambia o parte la cuchilla en cuanto note que «arrastra»: la goma densa la desafila rápido.",
+                "Corta las ranuras antes de formar el panel: en plano es mucho más fácil y preciso.",
+                "Escribe con lápiz en el reverso de cada pieza su ID y si es izquierda o derecha."], 2.0, y - 1.0, 17.0, "buls", 0.06)
+    assert y - 3.4 > 1.7, y
 
 
 def page_tut2(c):
-    chrome(c, 11, "PARTE III · TUTORIAL 2/3", "Termoformado, pegado y montaje")
-    y = PH - 2.2
+    chrome(c, 14, TOTAL, "PARTE III · TUTORIAL 2/5", "Termoformado de las 4 piezas")
     steps = [
-        (7, "Termoforma el cuerpo (A) y el puño (E)",
-         "Calienta con la pistola a temperatura media-baja, a 15–20 cm y <b>sin dejarla quieta</b>, durante unos 15–20 s por zona hasta que la goma se vuelva flexible y pierda algo de brillo. "
-         "Enróllala sobre una botella o un tubo (Ø 6–9 cm; la parte ancha para el codo) con el borde ancho hacia arriba y sujétala con cinta de carrocero 1–2 min hasta que se enfríe. "
-         "Repite hasta que el cono cierre dejando ~2 cm de hueco. Nunca te pongas la goma caliente: espera a que esté tibia para probarla."),
-        (8, "Prueba en seco",
-         "Ponte A + E sujetos con cinta y comprueba que puedes doblar el codo y cerrar el puño, y que el hueso de la muñeca pasa sin forzar. Si aprieta, vuelve a calentar y abre ligeramente el cono."),
-        (9, "Pega con cemento de contacto",
-         "Aplica una capa fina en ambas superficies (la goma absorbe: da una segunda capa si queda mate). Deja secar <b>5–10 min</b> hasta que no brille ni se pegue al dedo. "
-         "Une con cuidado, <b>no se puede recolocar</b>, y presiona con la palma o un rodillo. Trabaja en sitio ventilado y con guantes."),
-        (10, "Monta por capas (orden de la pág. 5)",
-         "<b>a)</b> Une el puño E al cuerpo A: unión a tope con bisel de 45° y refuerzo interior con tira de tela de ~2 cm. "
-         "<b>b)</b> Pega los ribetes C (arriba) y D (abajo) por la cara exterior y a ras del borde. "
-         "<b>c)</b> Pega las cinchas B1–B3 sobre las guías azules de P1: empieza a 0,5 cm del borde izquierdo y deja la punta (~1,5 cm) libre más allá del borde de cierre; ahí irán las hebillas. "
-         "<b>d)</b> Curva la placa F sobre una botella pequeña (Ø 5–6 cm) y pega su zona de 1,5 cm sobre el puño, centrada. "
-         "<b>e)</b> Monta la daga fuera del brazal: G1+G2 (tapa sobre base, centrada), H1.1+H1.2, H2.1+H2.2 y H3.1+H3.2; pégala sobre las cinchas, con la funda hacia el codo, en la guía naranja."),
-        (11, "Graba los detalles",
-         "Con un pirograbador (punta de cuchilla) o con cúter y un golpe de calor, marca la línea de grabado de la placa (a 0,6 cm del borde), la costura de la tapa de la funda y "
-         "los cortes oblicuos del cordón de la empuñadura (cada ~4 mm). Pasa rápido y sin apretar para no atravesar la goma."),
+        (7, "Base (1)", "Calienta con la pistola a 15–20 cm, siempre en movimiento, hasta que la goma esté flexible (15–20 s por zona). "
+            "Enróllala sobre una botella o tubo, con el borde ancho hacia arriba, y sujétala con cinta 1–2 min hasta que se enfríe. "
+            "Después calienta solo el pico y ábrelo un poco hacia fuera para que no se clave en el codo al doblarlo."),
+        (8, "Puño (3)", "Fórmalo igual, más cerrado. Tiene que abrazar la base por fuera: pruébalo encima del borde inferior de la base ya formada."),
+        (9, "Panel (2)", "Calienta el panel y apóyalo, todavía tibio, sobre la base ya formada en su posición (guía marrón de P1). "
+            "La base hace de molde y el panel adopta la misma curva. Sujétalo con cinta hasta que se enfríe."),
+        (10, "Guarda (4)", "<b>A:</b> curva la placa a lo ancho sobre una botella de Ø 5–6 cm y dale una ligera curva hacia los nudillos. "
+             "<b>B:</b> forma la base oscura igual que la placa A; las láminas se forman de una en una, cada una con la curva de su zona del dorso."),
+        (11, "Prueba en seco", "Pon todo en su sitio con cinta de carrocero. Comprueba que doblas el codo sin que el pico moleste, "
+             f"que el hueco de cierre ronda los {f1(G.GAP)} cm y que la guarda cubre hasta los nudillos sin tocar los dedos al cerrar el puño."),
     ]
-    y = steps_block(c, y, steps)
-    y = fig_row(c, y - 0.1, [fig_heat, fig_ring, fig_overlap]) - 0.4
-    y = para(c, "Tiempos orientativos para un par de braceras", 1.6, y, 17.8, "h3") - 0.1
-    data = [["Fase", "Tiempo estimado", "Notas"],
-            ["Prueba en papel, impresión y plantillas", "45 min", "Una sola vez; reutilizable"],
-            ["Trazado, corte y biselado", "2–3 h", "Las curvas largas de A y C/D llevan más tiempo"],
-            ["Termoformado y prueba en seco", "30–45 min", "Mejor con ayuda para sujetar con cinta"],
-            ["Pegado y montaje por capas", "2 h + secados", "Respeta 5–10 min de secado del cemento en cada unión"],
-            ["Sellado, pintura y barniz", "3–4 h + secados", "Reparte en dos sesiones (sellado un día, pintura otro)"]]
-    y = table(c, data, 1.6, y, [6.2, 3.3, 8.3], pad=2.4)
-    assert y > 1.8, f"pág 11 desborda {y}"
+    y = steps_block(c, PH - 2.2, steps)
+    y = fig_row(c, y - 0.05, [fig_heat, fig_mold, fig_ring]) - 0.4
+    box(c, 1.6, y - 4.3, 17.8, 4.3, fill=WARM, stroke=ACCENT)
+    text(c, "Consejos de termoformado", 2.0, y - 0.65, 10, "LS-B", ACCENT)
+    bullets(c, ["Si la goma brilla o hace burbujas, la pistola está demasiado cerca: aléjala y muévela más.",
+                "Calienta las dos caras: la curva aguanta mejor y la superficie no se marca.",
+                "Nunca te pongas una pieza caliente: espera a que esté tibia para probarla sobre el brazo.",
+                "Una pieza mal formada se puede recalentar todas las veces que haga falta antes de sellarla.",
+                "Forma siempre antes de pegar: una pieza pegada en plano tira de las uniones al curvarla."],
+            2.0, y - 1.0, 17.0, "buls", 0.08)
+    assert y - 4.3 > 1.7, y
 
 
 def page_tut3(c):
-    chrome(c, 12, "PARTE III · TUTORIAL 3/3", "Sellado, pintura, cierre y soluciones")
-    y = PH - 2.2
+    chrome(c, 15, TOTAL, "PARTE III · TUTORIAL 3/5", "Montaje: base, puño, panel, cinchas y daga")
     steps = [
-        (12, "Sella la goma",
-         "Lija bordes y juntas (240), quita el polvo y aplica 2–3 capas finas de Plasti Dip o de vinílica/PVA diluida 1:1, dejando secar 20–30 min entre capas. "
-         "Sin sellar, la pintura absorbe, se agrieta al flexionar y los poros se notan."),
-        (13, "Imprimación y color",
-         "Imprimación negra mate; después acrílico en capas finas con esponja o pincel (dos capas finas mejor que una gruesa). Usa la paleta de abajo."),
+        (12, "Pega con cemento de contacto", "Capa fina en las dos superficies; espera <b>5–10 min</b> a que no se pegue al dedo y une. "
+             "No se puede recolocar: presenta primero en seco y marca con lápiz."),
+        (13, "Puño sobre la base", "Pega el puño por fuera, cubriendo los 2 cm inferiores de la base (línea naranja de P3). El cm inferior queda "
+             "<b>libre</b> (vuelo): ahí irá la bisagra de la guarda. Alinea los bordes de cierre."),
+        (14, "Panel sobre la base", "Pega el panel siguiendo la guía marrón de P1, centrado en la cara exterior y por encima del puño. "
+             "Antes de pegar, comprueba que las ranuras coinciden con las guías azules de las cinchas."),
+        (15, "Tramos anteriores y posteriores (B·a, B·p)", "Pégalos sobre la base en las guías azules, desde el borde del panel hasta el borde de cierre. "
+             "Los posteriores sobresalen 2 cm con su punta (lado del pico). En los anteriores irán las hebillas."),
+        (16, "Tramos centrales (B·c)", "Bisela las puntas, pon cemento en la punta y en la pared de la ranura y mete cada extremo 0,6 cm en su ranura. "
+             "Así parece que la cincha pasa por debajo del panel. En el brazo izquierdo usa B1c·daga y B2c·daga, más largas."),
+        (17, "Daga (brazo izquierdo)", "Pega G2 centrada sobre G1, y H1, H2 y H3 en parejas. Monta la funda en la guía naranja <b>antes</b> de las centrales B1c y B2c, "
+             "que pasan por encima y la sujetan. La empuñadura va <b>encima</b> de la B3c."),
+    ]
+    y = steps_block(c, PH - 2.2, steps)
+    y = fig_row(c, y - 0.05, [fig_bevel, fig_slot, fig_dagger]) - 0.4
+    y = para(c, "Tiempos orientativos para un par de braceras", 1.6, y, 17.8, "h3") - 0.1
+    y = table(c, [["Fase", "Tiempo", "Notas"],
+                  ["Prueba en papel, impresión y plantillas", "1 h", "Reutilizables"],
+                  ["Trazado, corte, ranuras y biselado", "3–4 h", "Las curvas de la base y las ranuras llevan más tiempo"],
+                  ["Termoformado y prueba en seco", "1 h", "Con ayuda para sujetar es más fácil"],
+                  ["Montaje de capas, cinchas y daga", "3 h + secados", "5–10 min de secado del cemento por unión"],
+                  ["Guarda (A o B) y bisagra", "1–2 h", "La versión B lleva el doble de tiempo"],
+                  ["Sellado, pintura y barniz", "4 h + secados", "Repártelo en dos días"]],
+              1.6, y, [6.6, 2.8, 8.4], pad=2.2)
+    assert y > 1.7, y
+
+
+def page_tut4(c):
+    chrome(c, 16, TOTAL, "PARTE III · TUTORIAL 4/5", "Guarda de mano: versiones A y B")
+    y = para(c, "Las dos versiones se unen al puño igual. La guarda <b>no se pega rígida</b> al brazal: cruza la muñeca y tiene que poder moverse.", 1.6, PH - 2.2, 17.8, "b")
+    # dibujos A y B
+    sc = 0.55
+    yt = y - 0.3
+    box(c, 1.6, yt - 9.2, 8.75, 9.2, fill=colors.white)
+    box(c, 10.65, yt - 9.2, 8.75, 9.2, fill=colors.white)
+    text(c, "Versión A · placa única (película)", 2.0, yt - 0.6, 9.5, "LS-B", BROWN)
+    text(c, "Versión B · segmentada (ref. 2)", 11.05, yt - 0.6, 9.5, "LS-B", BROWN)
+    ga = G.guard_plate()
+    ox, oy = 1.6 + 8.75 / 2, yt - 1.2 - G.GUARD_TOP * sc
+    draw_poly(c, ga, fill=COL["guard"], stroke=DARK, lw=0.7, ox=ox, oy=oy, sc=sc)
+    draw_poly(c, ga.buffer(-0.6), stroke=colors.HexColor("#D8A877"), lw=0.6, dash=(1.5, 1.5), ox=ox, oy=oy, sc=sc)
+    ox2 = 10.65 + 8.75 / 2
+    draw_poly(c, G.guard_seg_base(), fill=COL["guard_base"], stroke=DARK, lw=0.7, ox=ox2, oy=oy, sc=sc)
+    for i in range(4):
+        draw_poly(c, G.guard_strip(i), fill=COL["guard"], stroke=DARK, lw=0.5, ox=ox2, oy=oy, sc=sc)
+    draw_poly(c, G.guard_band(), fill=colors.HexColor("#9C6A40"), stroke=DARK, lw=0.5, ox=ox2, oy=oy, sc=sc)
+    for x0 in (ox, ox2):
+        c.saveState(); c.setStrokeColor(GRAYT); c.setDash(1.5, 1.5)
+        for x, yy in ((-2.2, -8.3), (2.2, -8.3), (0, -9.4)) if x0 == ox else ((-3.3, -8.2), (-1.1, -9.2), (1.1, -9.4), (3.3, -8.6)):
+            c.circle((x0 + x * sc) * CM, (oy + yy * sc) * CM, 0.12 * CM, stroke=1, fill=0)
+        c.restoreState()
+    text(c, "remaches: fuera del PDF (gris)", ox, yt - 8.85, 6.5, "LS-I", GRAYT, "c")
+    text(c, "base oscura + 4 láminas + banda", ox2, yt - 8.85, 6.5, "LS-I", GRAYT, "c")
+    y = yt - 9.5
+    steps = [
+        (18, "Versión A", "Forma la placa, graba la línea a 0,6 cm del borde (pirograbador o cúter + calor) y lija los cantos hasta redondearlos."),
+        (19, "Versión B", "Forma la base oscura. Pega las láminas L1–L4 sobre sus guías azules (hoja P5), de dentro afuera, dejando 2–3 mm de base visible entre ellas. "
+             "Pega encima la banda (guía naranja), que tapa el arranque de las láminas."),
+        (20, "Bisagra", "Corta una tira de elástico plano o polipiel de 3 × 8 cm. Pega 4 cm por la cara interior de la guarda, en la franja superior, y los otros 4 cm por dentro del "
+             "vuelo del puño. La guarda queda colgando bajo el puño y se mueve con la muñeca."),
+        (21, "Sujeción a la mano", "Un lazo de elástico al dedo corazón o una tira por la palma, pegados por dentro de la guarda cerca de los nudillos, "
+             "evitan que la guarda se levante (fuera del PDF)."),
     ]
     y = steps_block(c, y, steps)
-    data = [
-        ["Elemento", "Color base", "Código", "Acabado"],
-        ["Cuerpo A y placa F", "Marrón cuero", "#7B4A2A", "Dry brush #A9744A en aristas y zonas altas"],
-        ["Ribetes C, D", "Marrón cálido claro", "#A9744A", "Un tono más claro que el cuerpo, con lavado oscuro en las juntas"],
-        ["Cinchas B y puño E", "Negro grafito", "#2B2B2B", "Dry brush gris #55555A en aristas"],
-        ["Funda G1/G2", "Gris oscuro", "#4A4A4D", "Línea de costura en gris claro #8A8A90"],
-        ["Empuñadura H1", "Marrón oscuro", "#5A3820", "Cordón en negro, aristas en #7B4A2A"],
-        ["Guarda H2 y pomo H3", "Plata metalizada", "#B8B8BC", "Base negra + plata; lavado negro en huecos"],
+    y = fig_row(c, y - 0.05, [fig_hinge, fig_bevel, fig_heat])
+    assert y > 1.7, y
+
+
+def page_tut5(c):
+    chrome(c, 17, TOTAL, "PARTE III · TUTORIAL 5/5", "Sellado, pintura, cierre y soluciones")
+    steps = [
+        (22, "Sella", "Lija suave (240), limpia el polvo y aplica 2–3 capas finas de Plasti Dip o de vinílica/PVA diluida 1:1, con 20–30 min de secado entre capas. "
+             "Sella también el interior de las ranuras."),
+        (23, "Pinta", "Imprimación negra y acrílico en capas finas. La base oscura <b>no</b> es negra pura: un gris marrón oscuro con dry brush más claro da sensación de cuero."),
     ]
-    y = table(c, data, 1.6, y - 0.1, [4.1, 3.6, 2.2, 7.9], pad=2.4)
-    y -= 0.4
+    y = steps_block(c, PH - 2.2, steps)
+    y = table(c, [["Pieza", "Color base", "Código", "Acabado"],
+                  ["1 · Base y 4B base", "Gris marrón muy oscuro", "#3A3836", "Dry brush #5E5751 en aristas y pico"],
+                  ["2 · Panel, 4A y láminas 4B", "Marrón cuero", "#8A5530", "Dry brush #B07A4E; lavado oscuro en la costura"],
+                  ["3 · Puño", "Negro grafito", "#2A2928", "Dry brush gris #55555A"],
+                  ["Cinchas", "Negro", "#1A1A1A", "Aristas gastadas en gris"],
+                  ["Funda G1/G2", "Gris oscuro", "#4A4A4D", "Costura gris claro #8A8A90"],
+                  ["Empuñadura H1", "Marrón oscuro", "#5A3820", "Cordón negro"],
+                  ["Guarda H2 y pomo H3", "Plata", "#B8B8BC", "Base negra + plata; lavado negro"]],
+              1.6, y - 0.05, [4.6, 4.0, 2.0, 7.2], pad=2.1)
+    y -= 0.35
     steps2 = [
-        (14, "Envejece",
-         "Aplica un lavado de marrón muy oscuro + agua en juntas y bordes, retira el exceso con un trapo; pasa dry brush ocre #B98B5B en las aristas y da toques con esponja para simular roce. "
-         "Menos es más: el cuero de Hipo está usado, no destrozado."),
-        (15, "Protege",
-         "Dos capas de barniz mate en spray (o satinado solo en la funda y la placa) a 25 cm de distancia."),
-        (16, "Cierre y detalles (fuera del PDF)",
-         "Cierra el brazal por el lado interior con velcro o elástico pegado por dentro en cada borde de cierre, o con hebillas y correa en las puntas de las cinchas. "
-         "Aquí también van las anillas D, los remaches de la placa y el lazo del dedo (gris discontinuo en el dibujo de la pág. 2)."),
+        (24, "Envejece y protege", "Lavado de marrón muy oscuro en juntas, ranuras y costuras; retira el exceso con un trapo. Después, dos capas de barniz mate."),
+        (25, "Cierre y herrajes (fuera del PDF)", "Hebillas en los tramos anteriores B·a y correa o las puntas de los B·p para cerrar el hueco interior. "
+             "Remaches en el pico y la guarda, anillas D en las puntas. Si no quieres hebillas, pon velcro por dentro de los bordes de cierre."),
     ]
     y = steps_block(c, y, steps2)
-    y = para(c, "Problemas frecuentes", 1.6, y - 0.05, 17.8, "h2")
-    data2 = [
-        ["Problema", "Causa probable", "Solución"],
-        ["El brazal no cierra o aprieta", "Holgura o perímetro mal medidos", "Reduce el hueco de cierre o recalcula con la tabla de la pág. 13."],
-        ["Se despegan las capas", "Poco secado del cemento o cara quemada", "Lija la zona, aplica dos capas y espera a que quede mate antes de unir."],
-        ["Cantos «peludos»", "Cuchilla roma", "Cuchilla nueva, pasadas suaves y lijado fino."],
-        ["La pintura se agrieta", "Sin sellar o capas gruesas", "Sella con Plasti Dip/PVA y pinta en capas finas."],
-        ["Vuelve a abrirse tras el calor", "Poco calor o enfriado sin sujeción", "Recalienta y sujeta con cinta hasta que se enfríe."],
-        ["Marcas o burbujas", "Demasiado calor en un punto", "Mueve la pistola constantemente y aléjala a 20 cm."],
-    ]
-    y = table(c, data2, 1.6, y - 0.1, [4.1, 4.6, 9.1], pad=2.3)
-    y = checklist(c, 1.6, y - 0.5, 17.8, "Lista de control final",
-                  ["Cierra con ~2 cm de hueco y sin rozar", "Uniones firmes (tirón suave)", "Superficie sellada sin brillos",
-                   "Cinchas y ribetes alineados", "Daga fija y centrada", "Barniz seco antes de añadir herrajes"], cols=2)
-    assert y > 1.8, f"pág 12 desborda {y}"
+    y = para(c, "Problemas frecuentes", 1.6, y - 0.05, 17.8, "h3")
+    y = table(c, [["Problema", "Causa", "Solución"],
+                  ["El pico se clava al doblar el codo", "Pico poco abierto o muy alto", "Recalienta y ábrelo hacia fuera; o rebaja 1 cm con lija"],
+                  ["El panel hace bolsa", "Formado en plano, no sobre la base", "Recalienta y fórmalo sobre la base"],
+                  ["La cincha central se sale de la ranura", "Poco cemento en la pared", "Bisela más la punta y pon cemento en la ranura y en la punta"],
+                  ["La guarda se levanta", "Sin sujeción a la mano", "Añade lazo de dedo o tira de palma"],
+                  ["Se agrieta la pintura", "Sin sellar o capas gruesas", "Sella y pinta en capas finas"]],
+              1.6, y - 0.05, [5.2, 5.0, 7.6], pad=2.0)
+    y = checklist(c, 1.6, y - 0.3, 17.8, "Lista de control final",
+                  ["Cierra con ~3 cm de hueco", "El codo dobla sin rozar el pico", "La guarda sigue a la muñeca",
+                   "Cinchas firmes en las ranuras", "Daga fija bajo B1c/B2c", "Barniz seco antes de los herrajes"], cols=2)
+    assert y > 1.7, y
 
 
-# ================================================================== PÁG 13: tallas
+# ================================================================== PÁG 18 · TALLAS
+def base_for(d):
+    old = G.R0
+    G.R0 = (G.C0 + d) / G.THETA
+    b = G.base()
+    G.R0 = old
+    return b
+
+
 def page_sizes(c):
-    chrome(c, 13, "PARTE III · ANEXO", "Adaptar el patrón a otra talla")
-    y = para(c, "Los patrones de esta guía son para un antebrazo de 26 cm (arriba) y 18 cm (abajo). Mide el tuyo con una cinta flexible <b>sobre la manga</b> "
-                "a 21,5 cm y a 4 cm de la muñeca, y calcula:", 1.6, PH - 2.2, 17.8, "b")
-    box(c, 1.6, y - 2.9, 17.8, 2.7)
-    para(c, "<b>L = perímetro + 1,5 (holgura) + 1,57 (grosor EVA) − 2,0 (hueco)</b><br/>"
-            "<b>ángulo = (L1 − L2) / 17,5</b> &nbsp;·&nbsp; <b>R2 = L2 / ángulo</b> &nbsp;·&nbsp; <b>R1 = R2 + 17,5</b>",
-         1.9, y - 0.45, 17.2, "b")
-    para(c, "El largo del brazal (17,5 cm) y el hueco de cierre se pueden cambiar; recalcula con los mismos pasos. "
-            "L1 se calcula con el perímetro de arriba y L2 con el de abajo.", 1.9, y - 1.7, 17.2, "xs")
-    y -= 3.4
-    y = para(c, "Tabla de tallas orientativas (diferencia constante de 8 cm entre arriba y abajo)", 1.6, y, 17.8, "h2")
-    rows = [["Talla", "Perímetro arriba / abajo", "L1 (arco sup.)", "L2 (arco inf.)", "R1", "R2", "Sector (ancho × alto)", "¿Cabe en 1 hoja A4?"]]
-    for name, top in (("S", 24.0), ("M (base)", 26.0), ("L", 28.0), ("XL", 30.0)):
-        cc = G.cone(top, top - 8.0)
-        fits = cc["bw"] <= 28.1 and cc["bh"] <= 19.4
-        rows.append([name, f"{f1(top)} / {f1(top - 8)}", f"{f1(cc['L1'])}", f"{f1(cc['L2'])}", f"{f1(cc['R1'])}", f"{f1(cc['R2'])}",
-                     f"{f1(cc['bw'])} × {f1(cc['bh'])}", "Sí" if fits else "No: dividir (ver abajo)"])
-    y = table(c, rows, 1.6, y - 0.1, [1.7, 3.0, 2.0, 2.0, 1.6, 1.6, 3.0, 2.9], pad=2.6)
-    y = para(c, "Si el sector no cabe en una hoja A4: <b>divide el cuerpo por el eje central</b> en dos mitades iguales. Cada mitad cabe en una hoja; une las mitades con un bisel de 45° "
-                "y una tira interior de refuerzo. Las cinchas, el puño y los ribetes se adaptan igual (ver fórmula).", 1.6, y - 0.2, 17.8, "s")
-    y -= 0.4
-    y = para(c, "Cómo dibujar el sector a mano (compás casero)", 1.6, y, 17.8, "h2")
-    # figura del sector
-    sc = 0.19
-    cx, cy = 6.0, y - 1.0 - 0.0
-    # apex arriba para dibujar el esquema: usar coordenadas del sector con ápice abajo; lo giramos 180° para que cuelgue del ápice
-    apex_x, apex_y = 5.6, y - 0.9
-    def Q(r, a):
-        return (apex_x + r * sc * math.sin(a), apex_y - r * sc * math.cos(a))
-    pts = [Q(R1, -TH / 2 + TH * i / 60) for i in range(61)] + [Q(R2, TH / 2 - TH * i / 60) for i in range(61)]
-    p = c.beginPath()
-    for i, (X, Y) in enumerate(pts):
-        (p.moveTo if i == 0 else p.lineTo)(X * CM, Y * CM)
-    p.close()
-    c.saveState()
-    c.setFillColor(CREAM)
-    c.setStrokeColor(DARK)
-    c.setLineWidth(1.2)
-    c.drawPath(p, stroke=1, fill=1)
-    c.setDash(3, 2)
-    c.setStrokeColor(GUIDE)
-    c.setLineWidth(0.8)
-    for a in (-TH / 2, TH / 2):
-        X0, Y0 = Q(0, a)
-        X1, Y1 = Q(R2, a)
-        c.line(X0 * CM, Y0 * CM, X1 * CM, Y1 * CM)
-    c.restoreState()
-    ax, ay = apex_x, apex_y
+    chrome(c, 18, TOTAL, "PARTE III · ANEXO", "Adaptar el patrón a otra talla")
+    y = para(c, f"Mide tu antebrazo <b>sobre la manga</b> a {f1(G.BASE_Y0)} cm y a {f1(G.BASE_Y1)} cm del pliegue de la muñeca y calcula:", 1.6, PH - 2.2, 17.8, "b")
+    box(c, 1.6, y - 1.75, 17.8, 1.55)
+    para(c, "<b>C = perímetro + 1,5 (holgura) + 1,57 (grosor)</b> &nbsp;·&nbsp; <b>θ = (C1 − C0) / 15,5</b> &nbsp;·&nbsp; <b>R0 = C0 / θ</b> &nbsp;·&nbsp; <b>R1 = R0 + 15,5</b><br/>"
+            f"Hueco de cierre: dos cortes paralelos a la costura, a {f1(G.GAP / 2)} cm de ella. Pico: súmalo con la tabla de alturas de abajo.",
+         1.9, y - 0.4, 17.2, "s")
+    y -= 2.15
+    y = para(c, "Tallas orientativas (mismo largo; perímetros desplazados)", 1.6, y, 17.8, "h2")
+    rows = [["Talla", "Perímetro a 3 / 18,5 cm", "C0 / C1", "R0 / R1", "Base (ancho × alto)", "¿Cabe en 1 hoja A4?"]]
+    for name, d in (("S", -1.5), ("M (esta guía)", 0.0), ("L", 1.5), ("XL", 3.0)):
+        b = base_for(d)
+        w, h = G.size(b)
+        fits = w <= 28.5 and h <= 19.8
+        rows.append([name, f"{f1(G.skin(G.BASE_Y0) + d)} / {f1(G.skin(G.BASE_Y1) + d)}", f"{f1(G.C0 + d)} / {f1(G.C1 + d)}",
+                     f"{f1((G.C0 + d) / G.THETA)} / {f1((G.C0 + d) / G.THETA + G.H)}", f"{f1(w)} × {f1(h)}",
+                     "Sí" if fits else "No: baja 1 cm el pico o divide la base"])
+    y = table(c, rows, 1.6, y - 0.1, [2.6, 3.6, 2.6, 2.6, 3.0, 3.4], pad=2.4)
+    y = para(c, "Si no cabe: reduce el pico o divide la base por la línea central, bajo el panel, que tapa la unión. Une las mitades con cemento y una tira interior. "
+                "Panel, puño y cinchas se recalculan con el mismo θ y el radio desplazado (+7,3 cm por cada capa de 5 mm).", 1.6, y - 0.2, 17.8, "s")
+    y -= 0.35
+    y = para(c, "Altura del pico sobre el borde superior (para dibujarlo a mano)", 1.6, y, 17.8, "h2")
+    ss = list(range(-8, 12, 2))
+    y = table(c, [["Arco desde el eje (cm)"] + [f"{s:+d}" for s in ss], ["Altura del pico (cm)"] + [f1(G.peak(s)) for s in ss]],
+              1.6, y - 0.1, [3.8] + [1.4] * len(ss), zebra=False, pad=2.4)
+    y = para(c, "El eje es el centro de la cara exterior; los valores positivos van hacia el lado posterior (codo). Mide el arco sobre el borde superior "
+                "con cinta flexible y marca la altura en perpendicular. Une los puntos con una curva suave.", 1.6, y - 0.15, 17.8, "xs")
+    y -= 0.35
+    y = para(c, "Cómo dibujar la base a mano (compás de cuerda)", 1.6, y, 17.8, "h2")
+    y = bullets(c, [
+        "Clava una chincheta (ápice) en papel grande y traza con hilo y lápiz dos arcos de radio R0 y R1.",
+        "Marca el ángulo θ midiendo sobre el arco R0 la longitud C0, y une los extremos con el ápice: es la costura.",
+        f"Traza dos rectas paralelas a esa costura, a {f1(G.GAP / 2)} cm hacia dentro: son los bordes de cierre.",
+        "Suma el pico con la tabla de alturas y redondea las esquinas 2–3 mm.",
+    ], 1.6, y, 17.8, "bul", 0.08, mark="→")
+    # esquema del desarrollo
+    sc = 0.13
+    full = Polygon([G.pol(G.R0 + G.H, -G.THETA / 2 + G.THETA * i / 60) for i in range(61)] +
+                   [G.pol(G.R0, G.THETA / 2 - G.THETA * i / 60) for i in range(61)])
+    ax, ay = 10.5, y - 0.6
+    flip = lambda p: affinity.scale(p, 1, -1, origin=(0, 0))
+    draw_poly(c, flip(full), stroke=colors.HexColor("#9A9A9A"), lw=0.6, dash=(3, 2), ox=ax, oy=ay, sc=sc)
+    draw_poly(c, flip(G.base()), fill=colors.HexColor("#D9D4CF"), stroke=DARK, lw=0.9, ox=ax, oy=ay, sc=sc)
+    for sg in (-1, 1):
+        X, Y = G.pol(G.R0 + G.H, sg * G.THETA / 2)
+        draw_line(c, [(ax, ay), (ax + X * sc, ay - Y * sc)], GUIDE, 0.6, (3, 2))
     c.setFillColor(ACCENT)
-    c.circle(ax * CM, ay * CM, 0.12 * CM, stroke=0, fill=1)
-    text(c, "ápice (chincheta)", ax + 0.3, ay + 0.15, 7, "LS-B", ACCENT)
-    text(c, "R2", *Q(R2 / 2, -TH / 2 - 0.0), 7.5, "LS-B", GUIDE) if False else None
-    mx, my = Q(R2 * 0.6, -TH / 2)
-    text(c, f"R2 = {f1(R2)} cm", mx - 0.2, my, 7, "LS-B", GUIDE, "r")
-    mx, my = Q((R1 + R2) / 2, TH / 2)
-    text(c, f"R1 = R2 + 17,5 = {f1(R1)} cm", mx + 0.3, my, 7, "LS-B", GUIDE, "l")
-    mx, my = Q(R1, 0)
-    text(c, f"L1 = {f1(C['L1'])} cm", mx, my - 0.5, 7.5, "LS-B", DARK, "c")
-    mx, my = Q(R2, 0)
-    text(c, f"L2 = {f1(C['L2'])} cm", mx, my + 0.3, 7.5, "LS-B", DARK, "c")
-    text(c, f"ángulo = {f1(math.degrees(TH))}°", ax + 0.45, ay - R2 * sc * 0.55, 7.5, "LS-B", GUIDE, "l")
-    steps = [
-        "Fija una chincheta (ápice) en una hoja grande de papel o cartulina, en una esquina con espacio para unos 60 cm de radio.",
-        "Ata un hilo inextensible a la chincheta y un lápiz a la distancia R1; traza el <b>arco superior</b>. Repite con la distancia R2 para el <b>arco inferior</b>.",
-        "Marca sobre el arco superior la longitud L1 (cinta flexible apoyada en el arco) y une los extremos con el ápice: son los dos <b>bordes rectos</b>.",
-        "Corta entre ambos arcos. Comprueba que el borde inferior mide L2 y que los bordes rectos miden 17,5 cm.",
-    ]
-    yy = y - 0.1
-    xs = 11.0
-    for i, s in enumerate(steps, 1):
-        p = Paragraph(s, ParagraphStyle("n2", parent=ST["s"], leftIndent=12, bulletIndent=0, bulletFontName="LS-B"), bulletText=f"{i}.")
-        _, h = p.wrap(8.4 * CM, 1000)
-        p.drawOn(c, xs * CM, yy * CM - h)
-        yy -= h / CM + 0.2
-    ybottom = min(yy, apex_y - R1 * sc - 0.5)
-    para(c, "Con esta misma fórmula puedes recalcular el puño (radios R2 y R2 − 3) y ajustar la placa de mano (ancho M8 de tu mano + 0,8 cm).", 1.6, ybottom - 0.2, 17.8, "xs")
+    c.circle(ax * CM, ay * CM, 0.1 * CM, stroke=0, fill=1)
+    text(c, "ápice", ax + 0.25, ay - 0.05, 7, "LS-B", ACCENT)
+    text(c, f"R0 = {f1(G.R0)}", ax - 1.2, ay - G.R0 * sc * 0.55, 7, "LS-B", GUIDE, "r")
+    text(c, f"θ = {f1(math.degrees(G.THETA))}°", ax, ay - 1.6, 7, "LS-B", GUIDE, "c")
+    text(c, "gris discontinuo: sector completo · relleno: base con hueco de cierre y pico (hacia abajo en este esquema)",
+         ax, ay - (G.R0 + G.H + G.PEAK_H) * sc - 0.45, 6.6, "LS-I", GRAYT, "c")
+    assert ay - (G.R0 + G.H + G.PEAK_H) * sc - 0.45 > 1.7, ay
 
 
 # ================================================================== main
+def pattern_pages():
+    return (page_p1, page_p2, page_p3, page_p4, page_p5, page_p6)
+
+
 def build():
     c = canvas.Canvas(OUT, pagesize=(PW * CM, PH * CM))
-    c.setTitle("Braceras de Hipo · Patrones EVA 5 mm y tutorial")
-    c.setAuthor("Guía de cosplay")
-    c.setSubject("Patrones a escala 1:1 en A4 y tutorial para las braceras de Hipo (Cómo entrenar a tu dragón 2)")
-    # Parte I
-    page_cover(c); c.showPage()
-    page_analysis(c); c.showPage()
-    page_measures(c); c.showPage()
-    page_materials(c); c.showPage()
-    page_assembly(c); c.showPage()
-    # Parte II (patrones, horizontales)
-    for fn in (page_p1, page_p2, page_p3, page_p4):
+    c.setTitle("Braceras de Hipo · Versión completa · Patrones EVA 5 mm y tutorial")
+    c.setSubject("4 piezas principales por bracera · patrones 1:1 en A4 · tutorial")
+    for fn in (page_cover, page_analysis, page_parts, page_measures, page_materials, page_assembly):
+        c.setPageSize((PW * CM, PH * CM))
+        fn(c)
+        c.showPage()
+    for fn in pattern_pages():
         c.setPageSize((G.PAGE_W * CM, G.PAGE_H * CM))
         fn(c)
         c.showPage()
-    # Parte III
-    for fn in (page_tut1, page_tut2, page_tut3, page_sizes):
+    for fn in (page_tut1, page_tut2, page_tut3, page_tut4, page_tut5, page_sizes):
         c.setPageSize((PW * CM, PH * CM))
         fn(c)
         c.showPage()
@@ -1277,16 +966,14 @@ def build():
 
 
 def build_print():
-    """PDF solo con las 4 hojas A4 para imprimir en papel como guía."""
-    out = OUT.replace("Patrones_y_Tutorial", "Guias_A4_imprimir")
-    c = canvas.Canvas(out, pagesize=(G.PAGE_W * CM, G.PAGE_H * CM))
+    c = canvas.Canvas(OUT_PRINT, pagesize=(G.PAGE_W * CM, G.PAGE_H * CM))
     c.setTitle("Braceras de Hipo · Guías A4 para imprimir (escala 1:1)")
-    for fn in (page_p1, page_p2, page_p3, page_p4):
+    for fn in pattern_pages():
         c.setPageSize((G.PAGE_W * CM, G.PAGE_H * CM))
         fn(c)
         c.showPage()
     c.save()
-    print("PDF generado:", out)
+    print("PDF generado:", OUT_PRINT)
 
 
 if __name__ == "__main__":

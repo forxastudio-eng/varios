@@ -1,86 +1,187 @@
-"""Geometría de las braceras de Hipo (EVA 5 mm, hojas A4).
+"""Geometría de las braceras de Hipo · versión completa (EVA 5 mm, hojas A4).
 
-Todas las medidas en centímetros. Convención: y hacia arriba.
-Talla de referencia: hombre 1,75 m, complexión normal.
+Cada bracera = 4 piezas principales:
+  1. BASE      · capa oscura envolvente, con pico alto hacia el codo (lado posterior)
+  2. PANEL     · panel frontal marrón con ranuras para las cinchas
+  3. PUÑO      · muñequera oscura sobre el borde inferior de la base
+  4. GUARDA    · guarda de mano (versión A: placa única · versión B: segmentada)
++ accesorios: cinchas (3 filas × 3 tramos) y daga (solo brazo izquierdo).
+
+Unidades: cm.  Coordenadas de patrón: ápice del cono en el origen, eje y hacia arriba,
+cara exterior del brazo en el centro (x = 0) y hueco de cierre en los bordes laterales.
+Las piezas se dibujan para el BRAZO IZQUIERDO (el de la daga); el derecho es su espejo.
 """
 import math
-from shapely.geometry import Polygon, Point, box
+from shapely.geometry import Polygon, Point, box as sbox
 from shapely import affinity
+from shapely.ops import unary_union, transform
 
-# ---------------------------------------------------------------- medidas base
-H = 17.5            # largo del cuerpo del brazal (sobre la generatriz del cono)
-TOP_SKIN = 26.0     # perímetro del antebrazo en el borde superior (a 21,5 cm de la muñeca)
-BOT_SKIN = 18.0     # perímetro del antebrazo en el borde inferior (a 4 cm de la muñeca)
-EASE = 1.5          # holgura para manga
-GAP = 2.0           # hueco de cierre entre bordes
+# ------------------------------------------------------------- medidas de partida
 T = 0.5             # grosor EVA
-CUFF_H = 3.0        # alto del puño
-RIM_W = 1.0         # ancho de los ribetes
-STRAP_W = 1.5       # ancho de las cinchas
-STRAP_S = [3.0, 8.75, 14.5]   # distancia (desde el borde superior) al centro de cada cincha
-STRAP_OVER = 1.0    # la cincha es 1 cm más larga que el arco (0,5 de margen + 1,5 que sobresale... ver tutorial)
-PLATE_L = 11.5
-PLATE_TAB = 1.5
+EASE = 1.5          # holgura sobre el perímetro (manga + movimiento)
+GAP = 3.0           # hueco de cierre en el lado interior (lo cierran las cinchas)
 
 
-def cone(top_skin=TOP_SKIN, bot_skin=BOT_SKIN, h=H, ease=EASE, gap=GAP, t=T):
-    L1 = top_skin + ease + math.pi * t - gap
-    L2 = bot_skin + ease + math.pi * t - gap
-    theta = (L1 - L2) / h
-    R2 = L2 / theta
-    R1 = R2 + h
-    w = 2 * R1 * math.sin(theta / 2)
-    hh = R1 - R2 * math.cos(theta / 2)
-    return dict(L1=L1, L2=L2, theta=theta, R1=R1, R2=R2, bw=w, bh=hh)
+def skin(y):
+    """Perímetro del antebrazo (cm) a y cm por encima del pliegue de la muñeca · hombre 1,75 m."""
+    return 17.0 + 9.0 * (max(y, 0.0) / 21.5) ** 1.3
 
 
-C = cone()
-R1, R2, THETA = C["R1"], C["R2"], C["theta"]
+# alturas (cm sobre el pliegue de la muñeca)
+BASE_Y0, BASE_Y1 = 3.0, 18.5             # base: borde inferior / borde superior (lado interior)
+PEAK_H, PEAK_C, PEAK_W = 3.2, 1.6, 9.5   # pico: alto, centro (arco desde el eje, + = posterior), semiancho
+CUFF_Y0, CUFF_Y1 = 2.0, 5.0              # puño: sobresale 1 cm por debajo de la base
+PANEL_Y0, PANEL_Y1 = 5.3, 17.0           # panel frontal
+PANEL_W = 8.6                            # ancho del panel a media altura (medido en plano)
+PANEL_R = 1.1                            # radio de esquinas del panel
+STRAP_W = 1.4
+STRAP_Y = [14.9, 11.6, 8.0]              # filas de cinchas (centro), de arriba abajo
+SLOT_IN = 0.9                            # distancia del centro de la ranura al borde del panel
+SLOT_W, SLOT_L = 0.5, STRAP_W + 0.2      # ranura: ancho (en arco) × largo (vertical)
+TUCK = 0.6                               # cuánto se mete la cincha en la ranura
+TAIL = 2.0                               # punta libre de la cincha lateral (para hebilla)
+DAGGER_X = -1.6                          # eje de la daga (arco desde el centro, − = anterior)
+DAGGER_Y0 = 5.6                          # base del pomo
+
+# ------------------------------------------------------------- cono base
+C0 = skin(BASE_Y0) + EASE + math.pi * T      # perímetro de la fibra neutra
+C1 = skin(BASE_Y1) + EASE + math.pi * T
+H = BASE_Y1 - BASE_Y0
+THETA = (C1 - C0) / H                          # ángulo del desarrollo completo
+R0 = C0 / THETA                                # radio de desarrollo del borde inferior
 
 
-def arc_pts(r, a0, a1, n=90):
-    """Puntos de un arco de radio r centrado en el origen; ángulo medido desde la vertical (y+)."""
-    return [(r * math.sin(a0 + (a1 - a0) * i / n), r * math.cos(a0 + (a1 - a0) * i / n)) for i in range(n + 1)]
+def R_at(y, offset=0.0):
+    """Radio de desarrollo a la altura y, sobre la superficie desplazada 'offset' cm hacia fuera."""
+    return R0 + (y - BASE_Y0) + offset * 2 * math.pi / THETA
 
 
-def annular_sector(r_out, r_in, theta=THETA):
-    outer = arc_pts(r_out, -theta / 2, theta / 2)
-    inner = arc_pts(r_in, theta / 2, -theta / 2)
-    return Polygon(outer + inner)
+def circ_at(y, offset=0.0):
+    return R_at(y, offset) * THETA
 
 
-def body():
-    return annular_sector(R1, R2)
+def pol(r, a):
+    return (r * math.sin(a), r * math.cos(a))
 
 
-def rim_top():
-    return annular_sector(R1, R1 - RIM_W)
+def _gap_cut(poly):
+    """Recorta el hueco de cierre: bandas paralelas a la generatriz de costura (lado interior)."""
+    big = 200.0
+    a = THETA / 2
+    out = poly
+    for sgn in (1, -1):
+        d = (sgn * math.sin(a), math.cos(a))            # generatriz de costura
+        n = (-sgn * math.cos(a), sgn * math.sin(a))     # normal hacia el interior de la pieza
+        o = (n[0] * GAP / 2, n[1] * GAP / 2)
+        p1 = (o[0] - d[0] * big, o[1] - d[1] * big)
+        p2 = (o[0] + d[0] * big, o[1] + d[1] * big)
+        hp = Polygon([p1, p2, (p2[0] + n[0] * big, p2[1] + n[1] * big), (p1[0] + n[0] * big, p1[1] + n[1] * big)])
+        out = out.intersection(hp)
+    return out
 
 
-def rim_bottom():
-    return annular_sector(R2 + RIM_W, R2)
+def ring_piece(y0, y1, offset=0.0, top_fn=None, n=240):
+    """Banda cónica completa entre y0 e y1 (con hueco de cierre). top_fn(arco) -> subida extra del borde superior."""
+    r0, r1 = R_at(y0, offset), R_at(y1, offset)
+    a = THETA / 2 + 0.05
+    top = []
+    for i in range(n + 1):
+        ang = -a + 2 * a * i / n
+        extra = top_fn(ang * r1) if top_fn else 0.0
+        top.append(pol(r1 + extra, ang))
+    bot = [pol(r0, a - 2 * a * i / n) for i in range(n + 1)]
+    return _gap_cut(Polygon(top + bot))
+
+
+def peak(s):
+    u = (s - PEAK_C) / PEAK_W
+    if abs(u) >= 1:
+        return 0.0
+    return PEAK_H * (0.5 * (1 + math.cos(math.pi * u))) ** 1.15
+
+
+def base():
+    return ring_piece(BASE_Y0, BASE_Y1, 0.0, peak)
 
 
 def cuff():
-    return annular_sector(R2, R2 - CUFF_H)
+    return ring_piece(CUFF_Y0, CUFF_Y1, T)
 
 
-def strap(s_center):
-    arc = (R1 - s_center) * THETA
-    length = round(arc + STRAP_OVER, 1)
-    w = STRAP_W
-    tip = 0.9
-    p = Polygon([(0, 0), (length - tip, 0), (length, w / 2), (length - tip, w), (0, w)])
-    return p, length
+def panel_angle():
+    ym = (PANEL_Y0 + PANEL_Y1) / 2
+    return PANEL_W / R_at(ym, T)
 
 
-def _mirror(half):
-    """half: lista de (semiancho, y) de arriba a abajo del lado derecho."""
-    right = [(x, y) for x, y in half]
-    left = [(-x, y) for x, y in reversed(half)]
-    return right + left
+def panel_outline():
+    phi = panel_angle()
+    r0, r1 = R_at(PANEL_Y0, T), R_at(PANEL_Y1, T)
+    n = 80
+    top = [pol(r1, -phi / 2 + phi * i / n) for i in range(n + 1)]
+    bot = [pol(r0, phi / 2 - phi * i / n) for i in range(n + 1)]
+    return Polygon(top + bot).buffer(-PANEL_R, join_style=1).buffer(PANEL_R, join_style=1)
 
 
+def slots():
+    """Ranuras del panel (rectángulos radiales) en coordenadas de panel."""
+    phi = panel_angle()
+    out = []
+    for y in STRAP_Y:
+        r = R_at(y, T)
+        half = r * phi / 2
+        for sgn in (-1, 1):
+            ang = sgn * (half - SLOT_IN) / r
+            rect = sbox(-SLOT_W / 2, -SLOT_L / 2, SLOT_W / 2, SLOT_L / 2)
+            rect = affinity.rotate(rect, -math.degrees(ang), origin=(0, 0))
+            cx, cy = pol(r, ang)
+            out.append(affinity.translate(rect, cx, cy))
+    return out
+
+
+def panel():
+    return panel_outline().difference(unary_union(slots()))
+
+
+def to_base(p, offset=T):
+    """Proyecta una figura dibujada sobre la superficie 'offset' al patrón de la base."""
+    dr = offset * 2 * math.pi / THETA
+
+    def f(xs, ys, zs=None):
+        out_x, out_y = [], []
+        for x, y in zip(xs, ys):
+            r = math.hypot(x, y)
+            a = math.atan2(x, y)
+            px, py = pol(r - dr, a)
+            out_x.append(px)
+            out_y.append(py)
+        return out_x, out_y
+    return transform(f, p)
+
+
+def arc_xy(s, y, offset=0.0):
+    """Punto de patrón a 's' cm de arco desde el eje, a la altura y, en la superficie 'offset'."""
+    r = R_at(y, offset)
+    return pol(r, s / r)
+
+
+# ------------------------------------------------------------- cinchas
+def strap_lengths(y):
+    base_half = (circ_at(y, T) - GAP) / 2              # superficie donde apoyan los tramos laterales
+    panel_half_t = R_at(y, T) * panel_angle() / 2      # semiancho del panel
+    panel_half_c = R_at(y, 2 * T) * panel_angle() / 2  # semiancho sobre la cara del panel
+    medial = base_half - panel_half_t
+    lateral = medial + TAIL
+    central = 2 * (panel_half_c - SLOT_IN) + 2 * TUCK
+    return dict(medial=medial, lateral=lateral, central=central, central_daga=central + 2.2)
+
+
+def strap(length, tip=False, w=STRAP_W):
+    if tip:
+        return Polygon([(0, 0), (length - 0.8, 0), (length, w / 2), (length - 0.8, w), (0, w)])
+    return Polygon([(0, 0), (length, 0), (length, w), (0, w)])
+
+
+# ------------------------------------------------------------- guarda de mano
 def _chaikin(pts, n=3):
     for _ in range(n):
         out = []
@@ -92,22 +193,58 @@ def _chaikin(pts, n=3):
     return pts
 
 
-def plate():
-    """Placa de dorso de mano (contorno suavizado). Eje largo vertical; y=0 arriba (muñeca), y=-PLATE_L abajo (nudillos)."""
-    half = [(3.6, 0.0), (3.9, -1.5), (4.6, -3.4), (4.85, -5.2), (4.7, -7.2), (4.0, -9.0), (2.7, -10.4), (1.1, -11.3)]
-    pts = half + [(0.0, -11.5)] + [(-x, y) for x, y in reversed(half)]
-    pts = [(x, y) for x, y in pts]
-    # esquinas superiores marcadas con puntos dobles para que el suavizado las conserve casi rectas
-    pts = [(3.6, 0.0), (3.6, 0.0)] + pts[1:-1] + [(-3.6, 0.0), (-3.6, 0.0)]
-    poly = Polygon(_chaikin(pts, 2))
-    minx, miny, maxx, maxy = poly.bounds
-    # normaliza para que el largo sea exactamente PLATE_L
-    return affinity.scale(poly, 1.0, PLATE_L / (maxy - miny), origin=(0, maxy))
+GUARD_TOP = 2.8      # y del borde superior (queda bajo el vuelo del puño)
+GUARD_TIP = -10.3    # punta (nudillos)
+
+
+def guard_plate():
+    """Versión A · placa única (película). Coordenadas de mano: y = cm sobre el pliegue de la muñeca."""
+    half = [(3.5, GUARD_TOP), (3.6, 1.0), (4.2, -1.5), (4.5, -4.0), (4.3, -6.5), (3.7, -8.4), (2.5, -9.5), (1.1, -10.1)]
+    pts = half + [(0.0, GUARD_TIP)] + [(-x, y) for x, y in reversed(half)]
+    pts = [half[0]] + pts + [(-half[0][0], half[0][1])]
+    return Polygon(_chaikin(pts, 2))
+
+
+STRIP_TOP = 0.9      # y donde empiezan las láminas (bajo la banda)
+BAND_Y0 = 0.4        # banda de muñeca de la guarda segmentada: de BAND_Y0 a GUARD_TOP
+STRIPS = [           # (x arriba, x abajo, y punta)
+    (-2.85, -3.35, -8.9),
+    (-0.95, -1.12, -9.9),
+    (0.95, 1.12, -10.1),
+    (2.85, 3.35, -9.3),
+]
+STRIP_W = 1.8
+
+
+def guard_strip(i):
+    xt, xb, yb = STRIPS[i]
+    w = STRIP_W / 2
+    yc = yb + w
+    pts = [(xt - w, STRIP_TOP), (xt + w, STRIP_TOP)]
+    n = 16
+    for k in range(n + 1):
+        a = -math.pi * k / n
+        pts.append((xb + w * math.cos(a), yc + w * math.sin(a)))
+    return Polygon(pts)
+
+
+def guard_band():
+    return Polygon([(-3.85, GUARD_TOP), (3.85, GUARD_TOP), (4.05, BAND_Y0), (-4.05, BAND_Y0)]).buffer(-0.2, join_style=1).buffer(0.2, join_style=1)
+
+
+def guard_seg_base():
+    parts = [guard_strip(i).buffer(0.35, join_style=1) for i in range(4)]
+    parts.append(Polygon([(-3.6, GUARD_TOP), (3.6, GUARD_TOP), (4.15, 0.0), (-4.15, 0.0)]))
+    return unary_union(parts).buffer(0.4, join_style=1).buffer(-0.4, join_style=1)
+
+
+# ------------------------------------------------------------- daga
+SHEATH_L = 8.4
 
 
 def sheath_base():
-    prof = [(1.2, 0.0), (1.3, 1.8), (1.0, 5.5), (0.6, 7.0)]
-    pts = prof + [(0.0, 7.6)] + [(-x, y) for x, y in reversed(prof)]
+    prof = [(1.25, 0.0), (1.32, 1.8), (1.05, 5.8), (0.6, 7.6)]
+    pts = prof + [(0.0, SHEATH_L)] + [(-x, y) for x, y in reversed(prof)]
     return Polygon(pts).buffer(-0.25).buffer(0.25)
 
 
@@ -116,24 +253,39 @@ def sheath_cover():
 
 
 def grip():
-    prof = [(0.55, 0.0), (0.7, 1.2), (0.62, 3.0), (0.72, 4.4), (0.58, 4.6)]
-    pts = prof + [(-x, y) for x, y in reversed(prof)]
-    return Polygon(pts)
+    prof = [(0.52, 0.0), (0.66, 1.1), (0.58, 2.6), (0.68, 4.2), (0.55, 4.4)]
+    return Polygon(prof + [(-x, y) for x, y in reversed(prof)])
 
 
-def guard():
-    prof = [(1.5, 0.1), (1.4, 0.7), (0.6, 0.8), (0.0, 0.8)]
-    pts = [(1.5, 0.1), (1.4, 0.7), (0.6, 0.8), (-0.6, 0.8), (-1.4, 0.7), (-1.5, 0.1), (-0.6, 0.0), (0.6, 0.0)]
-    return Polygon(pts)
+def crossguard():
+    return Polygon([(1.5, 0.1), (1.4, 0.7), (0.6, 0.8), (-0.6, 0.8), (-1.4, 0.7), (-1.5, 0.1), (-0.6, 0.0), (0.6, 0.0)])
 
 
 def pommel():
-    return Point(0, 0).buffer(0.75, 32)
+    return Point(0, 0).buffer(0.65, 32)
 
 
-# ------------------------------------------------------------------ utilidades
+def dagger_parts():
+    """Daga montada (local: x=0 eje, y=0 base del pomo)."""
+    return dict(
+        pommel=affinity.translate(pommel(), 0, 0.65),
+        grip=affinity.translate(grip(), 0, 1.3),
+        guard=affinity.translate(crossguard(), 0, 1.3 + 4.4),
+        sheath=affinity.translate(sheath_base(), 0, 1.3 + 4.4 + 0.8),
+    )
+
+
+DAGGER_LEN = 1.3 + 4.4 + 0.8 + SHEATH_L
+
+# ------------------------------------------------------------- maquetación
+PAGE_W, PAGE_H = 29.7, 21.0
+MARGIN = 0.6
+SAFE = sbox(MARGIN, MARGIN, PAGE_W - MARGIN, PAGE_H - MARGIN)
+CONTENT_TOP = 19.65
+MIN_GAP = 0.3
+
+
 def at(poly, x, y):
-    """Traslada la pieza para que su esquina inferior izquierda del bbox quede en (x,y)."""
     minx, miny, _, _ = poly.bounds
     return affinity.translate(poly, x - minx, y - miny)
 
@@ -143,114 +295,46 @@ def size(poly):
     return maxx - minx, maxy - miny
 
 
-# --------------------------------------------------------------------- páginas
-PAGE_W, PAGE_H = 29.7, 21.0
-SAFE = box(0.8, 0.8, 28.9, 20.2)
-CONTENT_TOP = 19.4      # por encima: cabecera de la hoja (P2-P4)
-MIN_GAP = 0.35
+def mirror(p):
+    return affinity.scale(p, -1, 1, origin=(0, 0))
 
 
-def layout_p1():
-    b = body()
-    w, h = size(b)
-    return {"A": at(b, (PAGE_W - w) / 2, 1.0)}
-
-
-def layout_p2():
-    items = {}
-    y = 0.9
-    # ribetes superiores x2 (anidados)
-    r = rim_top()
-    rw, rh = size(r)
-    r1 = at(r, 1.2, y)
-    shift = RIM_W + 0.45
-    r2 = affinity.translate(r1, 0, shift)
-    items["C1"] = r1
-    items["C2"] = r2
-    y = r2.bounds[3] + 0.6
-    # cinchas: 3 largos x2, de la más corta a la más larga hacia arriba
-    for k in (2, 1, 0):
-        for rep in (2, 1):
-            p, ln = strap(STRAP_S[k])
-            items[f"B{k + 1}.{rep}"] = at(p, 1.2, y)
-            y += STRAP_W + 0.5
-    return items
-
-
-def layout_p3():
-    items = {}
-    pl = affinity.rotate(plate(), 90, origin=(0, 0))
-    pw, ph = size(pl)
-    y = 0.9
-    c = cuff()
-    cw, ch = size(c)
-    c1 = at(c, 1.2, y)
-    shift = CUFF_H + 0.45
-    c2 = affinity.translate(c1, 0, shift)
-    items["E1"] = c1
-    items["E2"] = c2
-    y = c2.bounds[3] + 0.7
-    items["F1"] = at(pl, 1.2, y)
-    items["F2"] = at(pl, 1.2 + pw + 0.8, y)
-    return items
-
-
-def layout_p4():
-    items = {}
-    y = 0.9
-    r = rim_bottom()
-    r1 = at(r, 1.2, y)
-    r2 = affinity.translate(r1, 0, RIM_W + 0.45)
-    items["D1"] = r1
-    items["D2"] = r2
-    y = r2.bounds[3] + 1.0
-    x = 1.2
-    sb, sc = sheath_base(), sheath_cover()
-    items["G1"] = at(sb, x, y)
-    x = items["G1"].bounds[2] + 0.7
-    items["G2"] = at(sc, x, y)
-    x = items["G2"].bounds[2] + 1.2
-    # empuñaduras (2) en vertical
-    g = grip()
-    for rep in (1, 2):
-        items[f"H1.{rep}"] = at(g, x, y)
-        x = items[f"H1.{rep}"].bounds[2] + 0.6
-    x += 0.4
-    gd = guard()
-    for rep in (1, 2):
-        items[f"H2.{rep}"] = at(gd, x, y + 0.2 + (rep - 1) * 1.4)
-    x = items["H2.1"].bounds[2] + 0.9
-    pm = pommel()
-    for rep in (1, 2):
-        items[f"H3.{rep}"] = at(pm, x, y + 0.2 + (rep - 1) * 1.9)
-    return items
-
-
-def check(items, name, top_limit=None):
-    keys = list(items)
+def check(items, name, top_limit=CONTENT_TOP, boxes=()):
     ok = True
+    keys = list(items)
     for k in keys:
         if not SAFE.contains(items[k]):
-            print(f"  [!] {name}:{k} fuera de la zona segura", items[k].bounds)
+            print(f"  [!] {name}:{k} fuera de zona segura {tuple(round(v, 2) for v in items[k].bounds)}")
             ok = False
         if top_limit and items[k].bounds[3] > top_limit:
-            print(f"  [!] {name}:{k} invade la cabecera (y max {items[k].bounds[3]:.2f})")
+            print(f"  [!] {name}:{k} invade la cabecera ({items[k].bounds[3]:.2f})")
             ok = False
     for i in range(len(keys)):
         for j in range(i + 1, len(keys)):
             d = items[keys[i]].distance(items[keys[j]])
             if d < MIN_GAP:
-                print(f"  [!] {name}: {keys[i]} y {keys[j]} separados {d:.2f} cm (< {MIN_GAP})")
+                print(f"  [!] {name}: {keys[i]} / {keys[j]} a {d:.2f} cm")
+                ok = False
+    for bn, b in boxes:
+        for kk in keys:
+            if items[kk].intersects(b):
+                print(f"  [!] {name}: {kk} pisa la caja {bn}")
                 ok = False
     return ok
 
 
 if __name__ == "__main__":
-    print({k: round(v, 3) for k, v in C.items()})
-    for n, f in (("P1", layout_p1), ("P2", layout_p2), ("P3", layout_p3), ("P4", layout_p4)):
-        it = f()
-        print(n, "OK" if check(it, n, None if n == "P1" else CONTENT_TOP) else "REVISAR",
-              "ymax", round(max(p.bounds[3] for p in it.values()), 2))
-    for s in STRAP_S:
-        print("cincha s=", s, strap(s)[1])
-    print("plate", size(plate()), "sheath", size(sheath_base()), "cover", size(sheath_cover()))
+    print(f"C0={C0:.2f} C1={C1:.2f} H={H} THETA={THETA:.4f} ({math.degrees(THETA):.1f}°) R0={R0:.2f}")
+    b = base()
+    print("base", [round(v, 2) for v in size(b)])
+    print("cuff", [round(v, 2) for v in size(cuff())])
+    print("panel", [round(v, 2) for v in size(panel())], "ancho arriba/abajo",
+          round(R_at(PANEL_Y1, T) * panel_angle(), 2), round(R_at(PANEL_Y0, T) * panel_angle(), 2))
+    for y in STRAP_Y:
+        print("cinchas y=", y, {k: round(v, 2) for k, v in strap_lengths(y).items()})
+    print("guarda A", [round(v, 2) for v in size(guard_plate())])
+    print("guarda B base", [round(v, 2) for v in size(guard_seg_base())], "banda", [round(v, 2) for v in size(guard_band())])
+    for i in range(4):
+        print(" lámina", i + 1, [round(v, 2) for v in size(guard_strip(i))])
+    print("cima de la base sobre la daga:", round(BASE_Y1 + peak(DAGGER_X), 2),
+          "· punta de la funda:", round(DAGGER_Y0 + DAGGER_LEN, 2))
