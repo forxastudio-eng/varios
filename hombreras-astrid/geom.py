@@ -9,22 +9,19 @@ from shapely.geometry import Polygon, Point, box as sbox
 from shapely import affinity
 
 # ---------------------------------------------------------------- medidas base (mujer 1,65 m)
-R = 12.5                 # radio de la cúpula (fibra neutra)
-T_END = math.radians(100)  # extensión desde el polo (frontal) hasta el borde trasero
+R = 10.2                 # radio de la cúpula (fibra neutra)
+T_END = math.radians(145)  # 1/4 de esfera adaptado: del polo (delante) casi hasta el antipolo (atrás)
 OV = 1.0                 # solape de teja (la lámina inferior se mete 1 cm bajo la superior)
 T = 0.5                  # grosor EVA
 TIP_A = 0.9              # versión A: recorte de la punta (cm de arco desde el polo)
 TIP_B = 2.0              # versión B: las láminas empiezan bajo el disco
 DISC_D, DISC2_D = 6.6, 5.0
 
-# reparto de meridianos (grados), de arriba (cuello) hacia abajo (brazo)
-PHI0 = 15.0
-VERS = {
-    "A": dict(name="5 láminas (ref. 1)", widths=[15, 15, 15, 15, 15], tip=TIP_A,
-              ids=["A1", "A2", "A3", "A4", "A5"]),
-    "B": dict(name="abanico con disco (ref. 2)", widths=[13, 13, 13, 16, 20], tip=TIP_B,
-              ids=["B1", "B2", "B3", "B4", "B5"]),
-}
+# reparto de meridianos (grados), de arriba (cuello) hacia abajo (brazo): un cuarto de esfera = 90°
+PHI0 = 0.0
+WIDTHS = [14, 14, 14, 21, 27]       # 3 gajos estrechos arriba + 2 bandas anchas abajo (refs. 2 y 3)
+IDS = ["M1", "M2", "M3", "M4", "M5"]
+VERS = {"B": dict(name="5 módulos con disco", widths=WIDTHS, tip=TIP_B, ids=IDS)}
 
 
 def lame(widths, i, tip, r=None, n=90):
@@ -47,7 +44,7 @@ def rivets(widths, i, tip, r=None, version="A"):
     """Posiciones de remache (guía opcional) sobre el eje visible de la lámina."""
     r = r or R
     dphi = math.radians(widths[i])
-    ts = [40, 68, 94] if (version == "A" or widths[i] >= 16) else [55, 90]
+    ts = [45, 85, 125] if widths[i] >= 16 else [60, 115]
     out = []
     for td in ts:
         t = math.radians(td)
@@ -134,3 +131,38 @@ if __name__ == "__main__":
         for i, iid in enumerate(cfg["ids"]):
             p = lame(cfg["widths"], i, cfg["tip"])
             print("  ", iid, [round(x, 2) for x in size(p)])
+
+
+def pack_sheets(pieces, max_sheets=6):
+    """Reparte piezas en varias hojas A4: cada pieza va a la primera hoja donde quepa."""
+    sheets = []
+    for key, poly in pieces:
+        done = False
+        for sh in sheets:
+            occ = [p for p, _ in sh.values()]
+            mode = "grid" if poly.area < 60 else "ends"
+            pl, left = drop_pack([(key, poly)], x_cands=mode, rots=(0,) if poly.area < 60 else (0, 180), blocked=occ)
+            if not left:
+                sh.update(pl)
+                done = True
+                break
+        if not done:
+            pl, left = drop_pack([(key, poly)])
+            assert not left, key
+            sheets.append(dict(pl))
+        assert len(sheets) <= max_sheets
+    return sheets
+
+
+def all_pieces(k=1.0):
+    out = []
+    for i in (4, 3, 2, 1, 0):
+        p = lame(WIDTHS, i, TIP_B)
+        if k != 1.0:
+            p = affinity.scale(p, k, k, origin=(0, 0))
+        for rep in (1, 2):
+            out.append((f"{IDS[i]}.{rep}", p))
+    for d, name in ((DISC_D, "D1"), (DISC2_D, "D2")):
+        for rep in (1, 2):
+            out.append((f"{name}.{rep}", disc(d * k)))
+    return out
