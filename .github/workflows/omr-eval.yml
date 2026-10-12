@@ -1,0 +1,55 @@
+name: Medir la precisión del OMR (PDF → notas)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "app-piano-tablet/servidor/**"
+      - ".github/workflows/omr-eval.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  omr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app-piano-tablet/servidor
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencias (LilyPond, Python)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lilypond fontconfig
+          pip install -r requirements.txt pytest
+
+      - name: Pruebas del convertidor
+        run: python -m pytest -q tests
+
+      - name: Instalar Audiveris
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/Audiveris/audiveris/releases/latest --jq '.tag_name, (.assets[] | .name)'
+          url=$(gh api repos/Audiveris/audiveris/releases/latest --jq '[.assets[] | select(.name | endswith(".deb")) | select(.name | test("amd64|x86_64"))][0].browser_download_url')
+          echo "descargando: $url"
+          curl -fsSL "$url" -o /tmp/audiveris.deb
+          sudo apt-get install -y /tmp/audiveris.deb
+          dpkg -L audiveris | grep -E "/bin/" | head
+
+      - name: Medir la precisión sobre PDF generados con LilyPond
+        run: python tests/eval_omr.py omr_eval_salida
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: omr-eval
+          path: app-piano-tablet/servidor/omr_eval_salida
