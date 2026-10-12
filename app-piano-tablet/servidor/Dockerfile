@@ -3,7 +3,7 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive PORT=8765
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 python3-venv python3-pip curl ca-certificates fontconfig libfreetype6 \
+        python3 python3-venv python3-pip curl ca-certificates fontconfig libfreetype6 poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Audiveris: se descarga el paquete .deb de la última versión publicada para esta arquitectura.

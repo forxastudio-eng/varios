@@ -107,6 +107,26 @@ def preparar_imagen(ruta: str, destino_dir: str) -> str:
     return destino
 
 
+def dpi_para_pdf(ruta: str) -> int:
+    """Resolución con la que Audiveris debe leer el PDF para que el pentagrama mida ~INTERLINEA_OBJETIVO px.
+    Se renderiza la primera página (con pdftoppm, de poppler) a 150 ppp, se mide el pentagrama y se escala."""
+    import tempfile
+    from PIL import Image
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(["pdftoppm", "-r", "150", "-gray", "-f", "1", "-l", "1", "-png", ruta, os.path.join(d, "p")],
+                           check=True, capture_output=True, timeout=120)
+            png = sorted(glob.glob(os.path.join(d, "p*.png")))
+            if not png:
+                return 300
+            inter = estimar_interlinea(Image.open(png[0]).convert("L"))
+    except Exception:   # noqa: BLE001
+        return 300
+    if not inter:
+        return 300
+    return int(min(max(150.0 * INTERLINEA_OBJETIVO / inter, 200), 700))
+
+
 def contar_paginas_pdf(ruta: str) -> int:
     try:
         from pypdf import PdfReader
@@ -122,7 +142,14 @@ def ejecutar_audiveris(entrada: str, salida: str, progreso: Callable[[float, str
     if not exe:
         raise RuntimeError("Audiveris no está instalado en el servidor (usa la imagen Docker del proyecto)")
     os.makedirs(salida, exist_ok=True)
-    cmd = [exe, "-batch", "-export", "-output", salida, "--", entrada]
+    cmd = [exe, "-batch", "-export", "-output", salida]
+    if entrada.lower().endswith(".pdf"):
+        dpi = dpi_para_pdf(entrada)
+        progreso(0.08, f"Ajustando la lectura de la partitura ({dpi} ppp)…")
+        # sin límite de tamaño de imagen: a 28 px de interlínea una página A4 supera el máximo por defecto (20 Mpx)
+        cmd += ["-constant", f"org.audiveris.omr.image.ImageLoading.pdfResolution={dpi}",
+                "-constant", "org.audiveris.omr.step.LoadStep.maxPixelCount=0"]
+    cmd += ["--", entrada]
     progreso(0.1, "Leyendo la partitura…")
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     hechas = 0
