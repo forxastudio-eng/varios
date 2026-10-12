@@ -139,6 +139,6 @@ fun AppRoot(app: PianoApp) {
                 Screen.Practice(PracticeParams(startId, 1, HandsMode.RIGHT, PracticeMode.WAIT, 0.7f, true, LayoutMode.REDUCED))
             } else Screen.Home
         }
-        Screen.Import -> ImportScreen(app, onBack = { screen = Screen.Library }, onImported = { id -> screen = Screen.Detail(id) })
+        Screen.Import -> ImportScreen(app, settings, onBack = { screen = Screen.Library }, onImported = { id -> screen = Screen.Detail(id) })
     }
 }

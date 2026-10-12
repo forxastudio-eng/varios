@@ -237,6 +237,7 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 fun LabeledSlider(
     label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit,
     format: (Float) -> String = { "%.0f".format(it) }, modifier: Modifier = Modifier, hint: String? = null,
+    onFinished: (() -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -245,6 +246,7 @@ fun LabeledSlider(
         }
         Slider(
             value = value.coerceIn(range.start, range.endInclusive), onValueChange = onChange, valueRange = range,
+            onValueChangeFinished = onFinished,
             colors = SliderDefaults.colors(thumbColor = PC.text1, activeTrackColor = PC.right, inactiveTrackColor = PC.surface3),
         )
         if (hint != null) Text(hint, color = PC.text3, style = MaterialTheme.typography.bodySmall)
