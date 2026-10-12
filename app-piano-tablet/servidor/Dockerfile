@@ -16,7 +16,8 @@ RUN set -eux; \
     fi; \
     test -n "$url"; \
     curl -fsSL "$url" -o /tmp/audiveris.deb; \
-    apt-get update; apt-get install -y --no-install-recommends /tmp/audiveris.deb; \
+    dpkg-deb -x /tmp/audiveris.deb /; \
+    test -x /opt/audiveris/bin/Audiveris; \
     rm -rf /tmp/audiveris.deb /var/lib/apt/lists/*
 
 WORKDIR /srv

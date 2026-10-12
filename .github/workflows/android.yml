@@ -55,8 +55,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           cp app/build/outputs/apk/release/app-release.apk PianoCascada.apk
-          gh release delete apk-latest --yes --cleanup-tag || true
-          gh release create apk-latest PianoCascada.apk \
+          # una etiqueta nueva por compilación (GitHub no deja reutilizar la etiqueta de una versión borrada)
+          gh release create "apk-build-${{ github.run_number }}" PianoCascada.apk \
             --title "Piano Cascada · compilación ${{ github.run_number }}" \
             --notes "APK para la Galaxy Tab S8 Ultra (arm64). Commit ${{ github.sha }}." \
             --prerelease --target "${{ github.sha }}"
+          # conserva solo las 3 últimas
+          gh release list --limit 50 --json tagName,createdAt --jq 'map(select(.tagName | startswith("apk-"))) | sort_by(.createdAt) | reverse | .[3:] | .[].tagName' \
+            | while read -r tag; do gh release delete "$tag" --yes --cleanup-tag || true; done

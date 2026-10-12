@@ -42,8 +42,12 @@ jobs:
           url=$(gh api repos/Audiveris/audiveris/releases/latest --jq '[.assets[] | select(.name | endswith(".deb")) | select(.name | test("amd64|x86_64"))][0].browser_download_url')
           echo "descargando: $url"
           curl -fsSL "$url" -o /tmp/audiveris.deb
-          sudo apt-get install -y /tmp/audiveris.deb
-          dpkg -L audiveris | grep -E "/bin/" | head
+          # se desempaqueta sin ejecutar el postinst (falla en el runner por falta de menús de escritorio)
+          mkdir -p "$HOME/aud" && dpkg-deb -x /tmp/audiveris.deb "$HOME/aud"
+          exe=$(find "$HOME/aud" -type f -iname Audiveris -perm -u+x | head -1)
+          echo "ejecutable: $exe"
+          test -n "$exe"
+          echo "AUDIVERIS_BIN=$exe" >> "$GITHUB_ENV"
 
       - name: Medir la precisión sobre PDF generados con LilyPond
         run: python tests/eval_omr.py omr_eval_salida
