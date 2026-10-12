@@ -43,6 +43,6 @@ Los MusicXML (`.musicxml`, `.mxl`) se convierten directamente sin pasar por Audi
 ## Pruebas
 
 ```
-pip install -r requirements.txt pytest
+pip install -r requirements.txt pytest httpx
 pytest tests
 ```
