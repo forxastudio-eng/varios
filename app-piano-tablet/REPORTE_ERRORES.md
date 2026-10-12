@@ -55,3 +55,22 @@ Ahora el nivel 1 fuerza «Ambas» (que equivale a la derecha porque solo hay esa
 ## Qué no se ha revisado a fondo
 - `Onboarding.kt`, `SettingsScreen.kt`, `Components.kt`, `Theme.kt`, `Palette.kt`: solo hojeados (interfaz sin lógica crítica).
 - El módulo `transcribe` ya está cubierto por el banco de evaluación (`Eval.kt`); no se ha vuelto a auditar línea a línea.
+
+## Precisión medida del lector de partituras (PDF → notas)
+
+Banco de prueba: 5 piezas del corpus de music21 convertidas a PDF con LilyPond y leídas con Audiveris 5.11 + el servidor
+(`servidor/tests/eval_omr.py`). Son PDF limpios de programa de notación, **no** fotos ni escaneos reales.
+
+| Pieza | Contenido | Ritmo | Estricta |
+|---|---|---|---|
+| Bach BWV 80.8 | 1,000 | 1,000 | 1,000 |
+| Bach BWV 140.7 | 0,994 | 0,990 | 0,534 |
+| Verdi, La donna è mobile | 0,985 | 0,924 | 0,322 |
+| Bach BWV 846 (preludio, 4 voces) | 0,893 | 0,944 | 0,010 |
+| Bach BWV 1.6 | 0,838 | 1,000 | 0,811 |
+| **Media** | **0,942** | **0,972** | |
+
+Hallazgo principal: con el tamaño de pentagrama por defecto (19 px entre líneas) Audiveris falla (BWV 80.8: contenido 0,40);
+a ≈ 28 px acierta. El servidor mide el pentagrama y ajusta la resolución automáticamente. La métrica «estricta» se hunde
+cuando Audiveris se equivoca en la duración de un compás (todo lo posterior se desplaza) aunque las notas estén bien.
+No medido todavía: fotos reales, partituras escaneadas antiguas, música con letra o muchos adornos.
