@@ -41,7 +41,7 @@ jobs:
         run: PIANO_CORE_ONLY=1 ./gradlew :core:test --no-daemon
 
       - name: Compilar el APK
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+        run: ./gradlew :app:assembleRelease --no-daemon --console=plain
 
       - name: Guardar el APK como artefacto
         uses: actions/upload-artifact@v4

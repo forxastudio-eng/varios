@@ -232,16 +232,16 @@ class PracticeController(
         updateUi(force = true)
     }
 
-    fun setSpeed(v: Float) {
+    fun changeSpeed(v: Float) {
         speed = v
         audio.setSpeed(v)
         // la tolerancia en tiempo de canción depende de la velocidad
         buildSession(posMs.coerceAtLeast(0.0), if (loopOn) loopEndMs else Double.MAX_VALUE)
     }
 
-    fun setMode(m: PracticeMode) { mode = m; reconfigure(currentBar()) }
-    fun setHands(h: HandsMode) { hands = h; reconfigure(currentBar()) }
-    fun setLevel(l: Int) { level = l; reconfigure(currentBar()) }
+    fun changeMode(m: PracticeMode) { mode = m; reconfigure(currentBar()) }
+    fun changeHands(h: HandsMode) { hands = h; reconfigure(currentBar()) }
+    fun changeLevel(l: Int) { level = l; reconfigure(currentBar()) }
 
     fun currentBar(): Int {
         val s = song ?: return 0
@@ -268,7 +268,7 @@ class PracticeController(
         updateUi(force = true)
     }
 
-    fun setPedal(down: Boolean) {
+    fun holdPedal(down: Boolean) {
         pedal = down
         audio.pedal(down)
     }

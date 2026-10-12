@@ -203,21 +203,21 @@ private fun RowScope.Controls(c: PracticeController, title: String, onExit: () -
         Gap(w = gap)
         if (withTitle) { Text(c.barText, color = PC.text2, style = MaterialTheme.typography.labelMedium); Gap(w = gap) }
         val speeds = listOf(0.5f, 0.7f, 0.85f, 1f)
-        Pill("${(c.speed * 100).toInt()} %", { c.setSpeed(speeds[(speeds.indexOfFirst { it >= c.speed - 0.01f }.coerceAtLeast(0) + 1) % speeds.size]) }, big)
+        Pill("${(c.speed * 100).toInt()} %", { c.changeSpeed(speeds[(speeds.indexOfFirst { it >= c.speed - 0.01f }.coerceAtLeast(0) + 1) % speeds.size]) }, big)
         Gap(w = gap)
         Pill(
             when (c.mode) { PracticeMode.WAIT -> "Espera"; PracticeMode.RHYTHM -> "Ritmo"; PracticeMode.LISTEN -> "Escuchar" },
-            { c.setMode(when (c.mode) { PracticeMode.WAIT -> PracticeMode.RHYTHM; PracticeMode.RHYTHM -> PracticeMode.LISTEN; PracticeMode.LISTEN -> PracticeMode.WAIT }) }, big,
+            { c.changeMode(when (c.mode) { PracticeMode.WAIT -> PracticeMode.RHYTHM; PracticeMode.RHYTHM -> PracticeMode.LISTEN; PracticeMode.LISTEN -> PracticeMode.WAIT }) }, big,
         )
         Gap(w = gap)
         if (c.level > 1) {
             Pill(
                 when (c.hands) { HandsMode.BOTH -> "Ambas"; HandsMode.RIGHT -> "Der."; HandsMode.LEFT -> "Izq." },
-                { c.setHands(when (c.hands) { HandsMode.BOTH -> HandsMode.RIGHT; HandsMode.RIGHT -> HandsMode.LEFT; HandsMode.LEFT -> HandsMode.BOTH }) }, big,
+                { c.changeHands(when (c.hands) { HandsMode.BOTH -> HandsMode.RIGHT; HandsMode.RIGHT -> HandsMode.LEFT; HandsMode.LEFT -> HandsMode.BOTH }) }, big,
             )
             Gap(w = gap)
         }
-        Pill("Nv ${c.level}", { c.setLevel(if (c.level >= c.song.levels.last()) 1 else c.level + 1) }, big)
+        Pill("Nv ${c.level}", { c.changeLevel(if (c.level >= c.song.levels.last()) 1 else c.level + 1) }, big)
         Gap(w = gap)
     } else {
         Box(Modifier.weight(1f))
@@ -235,8 +235,8 @@ fun PedalButton(c: PracticeController, big: Boolean) {
             .background(if (c.pedal) PC.surface3 else PC.surface2)
             .pointerInput(c) {
                 detectTapGestures(onPress = {
-                    c.setPedal(true)
-                    try { awaitRelease() } finally { c.setPedal(false) }
+                    c.holdPedal(true)
+                    try { awaitRelease() } finally { c.holdPedal(false) }
                 })
             },
         contentAlignment = Alignment.Center,
