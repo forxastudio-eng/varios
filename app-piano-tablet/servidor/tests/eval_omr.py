@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from music21 import corpus
 import conversion, omr
 
-PIEZAS = ["bach/bwv846", "mozart/k545/movement1_exposition", "verdi/laDonnaEMobile", "schubert/Lindenbaum",
+PIEZAS = ["bach/bwv846", "mozart/k545/movement1_exposition", "verdi/laDonnaEMobile", "schubert/Lindenbaum", "bach/bwv66.6", "bach/bwv269",
           "bach/bwv140.7", "bach/bwv80.8", "bach/bwv1.6", "bach/bwv244.54"]
 SALIDA = sys.argv[1] if len(sys.argv) > 1 else "omr_eval_salida"
 os.makedirs(SALIDA, exist_ok=True)
@@ -28,6 +28,23 @@ def f1(est, ver, tol=0.06):
     return p, r, (2 * p * r / (p + r) if p + r else 0)
 
 
+def diagnostico(nombre, verdad, leido):
+    """Separa los tipos de error: octava, cuadrícula de tiempo, notas que faltan o sobran."""
+    ver = sorted((round(n[0], 3), n[2], round(n[1], 3)) for n in verdad["mdNotas"] + verdad["miNotas"])
+    est = sorted((round(n[0], 3), n[2], round(n[1], 3)) for n in leido["mdNotas"] + leido["miNotas"])
+    print(f"  [{nombre}] notas: verdad {len(ver)} · leído {len(est)} · pulso/compás verdad {verdad['pulsosCompas']}/{verdad['compas']} leído {leido['pulsosCompas']}/{leido['compas']} · bpm {verdad['bpm']}/{leido['bpm']} · tonalidad {verdad['tonalidad']}/{leido['tonalidad']}")
+    for etiqueta, f in (("clase de nota (sin octava)", lambda n: (n[0], n[1] % 12)), ("solo instante", lambda n: (n[0], 0)), ("solo altura", lambda n: (0, n[1]))):
+        a = [f(n) for n in est]; b = [f(n) for n in ver]
+        from collections import Counter
+        ca, cb = Counter(a), Counter(b)
+        tp = sum((ca & cb).values())
+        pr = tp / max(1, len(a)); re = tp / max(1, len(b))
+        print(f"     {etiqueta}: P {pr:.2f} R {re:.2f}")
+    print("     verdad[:10]:", ver[:10])
+    print("     leído [:10]:", est[:10])
+    print("     pitch mín/máx verdad", min(n[1] for n in ver), max(n[1] for n in ver), "leído", min(n[1] for n in est) if est else None, max(n[1] for n in est) if est else None)
+
+
 def pdf_desde_musicxml(xml, dest):
     ly = os.path.join(dest, "p.ly")
     subprocess.run(["musicxml2ly", "-o", ly, xml], check=True, capture_output=True)
@@ -40,8 +57,11 @@ for nombre in PIEZAS:
     d = tempfile.mkdtemp(prefix="eval_")
     try:
         xml = os.path.join(d, "orig.musicxml")
-        corpus.parse(nombre).write("musicxml", fp=xml)
-        verdad = conversion.convertir(xml)["cancion"]
+        try:
+            corpus.parse(nombre).write("musicxml", fp=xml)
+            verdad = conversion.convertir(xml)["cancion"]
+        except Exception as e:   # noqa: BLE001
+            filas.append((nombre, "ERROR corpus: " + str(e)[:80].replace("\n", " "), 0, 0, 0, 0, 0)); continue
         try:
             pdf = pdf_desde_musicxml(xml, d)
         except Exception as e:   # noqa: BLE001
@@ -57,6 +77,7 @@ for nombre in PIEZAS:
         dt = time.time() - t0
         ver = [(n[0], n[2]) for n in verdad["mdNotas"] + verdad["miNotas"]]
         est = [(n[0], n[2]) for n in leido["mdNotas"] + leido["miNotas"]]
+        diagnostico(nombre, verdad, leido)
         p, r, f = f1(est, ver)
         ver_r = [(n[0], n[2]) for n in verdad["mdNotas"]]; est_r = [(n[0], n[2]) for n in leido["mdNotas"]]
         _, _, fr = f1(est_r, ver_r)
