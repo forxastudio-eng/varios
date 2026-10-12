@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -82,7 +83,7 @@ fun LibraryScreen(
             IconBtn(G.BACK, onBack)
             Text("Mi biblioteca", color = PC.text1, style = MaterialTheme.typography.headlineLarge, modifier = Modifier.weight(1f))
             Box(
-                Modifier.width300().height(48.dp).clip(RoundedCornerShape(14.dp)).background(PC.surface2).padding(horizontal = 16.dp),
+                Modifier.width(300.dp).height(48.dp).clip(RoundedCornerShape(14.dp)).background(PC.surface2).padding(horizontal = 16.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -118,8 +119,6 @@ fun LibraryScreen(
         }
     }
 }
-
-private fun Modifier.width300(): Modifier = this.then(Modifier.size(width = 300.dp, height = 48.dp))
 
 @Composable
 fun SongCard(song: Song, p: SongProgress?, onClick: () -> Unit, onFavorite: () -> Unit) {

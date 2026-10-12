@@ -75,8 +75,11 @@ class ImportController(private val app: PianoApp) {
         }
     }
 
+    private class NoNotes(msg: String) : Exception(msg)
+
     private fun review(title: String, r: TranscriptionResult, a: AnalyzedAudio, q: Float): ImportState.Review {
         val s = r.song.copy(title = title)
+        if (s.notes(3).isEmpty()) throw NoNotes("No se han detectado notas. Prueba con una grabación con más volumen o de piano solo, o baja la sensibilidad.")
         val detail = "${r.rawNotes.size} candidatas → ${r.finalNotes.size} notas · tempo ${s.bpm} ppm · ${s.meter} · ${com.forxa.pianocascada.core.Transposer.displayKey(s.key)}"
         return ImportState.Review(title, s, a, q, emptyList(), detail)
     }
@@ -101,6 +104,7 @@ class ImportController(private val app: PianoApp) {
             try {
                 val bytes = app.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
                 val song = MidiImporter.parse(bytes, slug(title), title)
+                if (song.notes(3).isEmpty()) throw NoNotes("El archivo MIDI no contiene notas.")
                 state = ImportState.Review(title, song, null, 0f, emptyList(), "${song.notes(3).size} notas · tempo ${song.bpm} ppm · ${song.meter} · ${com.forxa.pianocascada.core.Transposer.displayKey(song.key)}")
             } catch (e: Throwable) { fail(e) }
         }
@@ -120,6 +124,7 @@ class ImportController(private val app: PianoApp) {
                     onProgress = { p, m -> state = ImportState.Working(p, m, title) }, cancelled = { cancelFlag })
                 val parsed = SongLibrary.parse(res.json).single()
                 val song = parsed.copy(id = slug(title), title = title, source = SongSource.PDF)
+                if (song.notes(3).isEmpty()) throw NoNotes("No se ha encontrado música en la partitura. Comprueba que la imagen es nítida y está recta.")
                 state = ImportState.Review(title, song, null, 0f, res.warnings, "${song.notes(3).size} notas · ${song.bars} compases · ${song.meter} · ${com.forxa.pianocascada.core.Transposer.displayKey(song.key)}")
             } catch (e: Throwable) { fail(e) }
         }

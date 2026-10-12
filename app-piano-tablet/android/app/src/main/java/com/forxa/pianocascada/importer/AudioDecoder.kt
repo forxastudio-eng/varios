@@ -15,7 +15,7 @@ object AudioDecoder {
 
     class TooLong(val seconds: Int) : Exception("El audio dura más de ${seconds / 60} minutos")
 
-    fun decode(context: Context, uri: Uri, maxSeconds: Int = 20 * 60, onProgress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): Decoded {
+    fun decode(context: Context, uri: Uri, maxSeconds: Int = 15 * 60, onProgress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): Decoded {
         val ex = MediaExtractor()
         ex.setDataSource(context, uri, null)
         var track = -1

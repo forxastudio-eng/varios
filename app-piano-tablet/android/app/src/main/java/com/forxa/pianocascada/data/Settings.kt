@@ -121,8 +121,8 @@ data class Settings(
                         heightScale = k.optDouble("height", 1.0).toFloat(), blackWidth = k.optDouble("black", 0.62).toFloat(),
                         slide = k.optBoolean("slide", dk.slide), palmReject = k.optBoolean("palm", dk.palmReject),
                         calibMin = k.optDouble("cmin", 0.0).toFloat(), calibMax = k.optDouble("cmax", 0.0).toFloat(),
-                        layout = k.optEnum("layout", dk.layout), reducedSpan = k.optInt("span", dk.reducedSpan),
-                        split = k.optInt("split", dk.split),
+                        layout = k.optEnum("layout", dk.layout), reducedSpan = k.optInt("span", dk.reducedSpan).coerceIn(8, 28),
+                        split = k.optInt("split", dk.split).let { if (it in 48..77 && !com.forxa.pianocascada.core.Notes.isBlack(it) && !com.forxa.pianocascada.core.Notes.isBlack(it - 1)) it else dk.split },
                     ),
                     display = DisplaySettings(
                         preset = d.optInt("preset", 0), noteLetters = d.optBoolean("noteLetters", dd.noteLetters),

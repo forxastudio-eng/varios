@@ -104,11 +104,25 @@ class SongLibraryTest {
     @Test fun sequenceMatchesSongTiming() {
         val s = songs.first { it.id == "himno-alegria" }
         val seq = Sequencer.build(s, 3)
-        assertEquals(s.notes(3).size, seq.size)
-        assertEquals(0.0, seq.startMs[0], 1e-6)
+        val notes = s.notes(3)
+        assertEquals(notes.size, seq.size)
         val msPerBeat = 60000.0 / s.bpm
-        assertEquals(msPerBeat, seq.startMs[2 * 1].coerceAtLeast(0.0).let { if (it > 0) it else msPerBeat }, 1e-6) // 2ª nota en el pulso 1
-        assertTrue(seq.durMs.all { it > 0.0 })
+        for (i in 0 until seq.size) {
+            assertEquals(notes[i].start * msPerBeat, seq.startMs[i], 1e-3, "inicio de la nota $i")
+            assertEquals(notes[i].dur * msPerBeat * 0.96, seq.durMs[i], 1e-3, "duración de la nota $i")
+            assertEquals(notes[i].pitch, seq.keys[i])
+        }
+        assertTrue(seq.startMs.toList().zipWithNext().all { (a, b) -> a <= b }, "las notas deben salir ordenadas")
+    }
+
+    @Test fun levelOneHasOnlyTheRightHand() {
+        // el controlador fuerza «Ambas» en el nivel 1: con «Izquierda» no quedaría ninguna nota que tocar
+        for (s in songs) assertTrue(s.notes(1).all { it.hand == Hand.RIGHT }, s.id)
+        for (s in songs.filter { it.lh.isNotEmpty() }) {
+            val session = PracticeSession(s.notes(1).filter { it.hand == Hand.LEFT }, 60000.0 / s.bpm, PracticeMode.WAIT)
+            assertEquals(0, session.total, s.id)
+            assertTrue(session.isFinished(), "una sesión sin notas está «terminada» desde el primer instante: ${s.id}")
+        }
     }
 }
 
@@ -180,7 +194,9 @@ class KeyboardTest {
         assertTrue(csharp.bottom < c.bottom)
         // justo bajo la tecla negra se toca la blanca
         assertEquals(60, r.pitchAt(c.left + 2f, 250f)); assertEquals(61, r.pitchAt(csharp.centerX, 100f))
-        assertEquals(62, r.pitchAt(d.centerX + 1f, 250f).let { if (it == 62) 62 else 62 })
+        assertEquals(62, r.pitchAt(d.centerX + 1f, 250f))
+        assertEquals(60, r.pitchAt(csharp.left - 1f, 100f))   // justo a la izquierda de la negra, a su altura: es la blanca
+        assertEquals(62, r.pitchAt(csharp.right + 1f, 100f))
     }
 
     @Test fun eAndFHaveNoBlackKeyBetween() {

@@ -8,6 +8,7 @@
     <application
         android:name=".PianoApp"
         android:allowBackup="true"
+        android:largeHeap="true"
         android:icon="@mipmap/ic_launcher"
         android:label="Piano Cascada"
         android:supportsRtl="false"

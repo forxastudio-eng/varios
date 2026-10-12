@@ -83,7 +83,7 @@ class SongRepository(private val context: Context) {
 
     fun load() {
         val bundled = context.assets.open("songs.json").bufferedReader().use { SongLibrary.parse(it.readText()) }
-        val user = userDir.listFiles { f -> f.extension == "json" }?.mapNotNull { f ->
+        val user = userDir.listFiles { f -> f.extension == "json" }?.sortedBy { it.name }?.mapNotNull { f ->
             runCatching { SongLibrary.parse(f.readText()) }.getOrNull()
         }?.flatten().orEmpty().mapIndexed { i, s -> s.copy(order = 1000 + i) }
         _songs.value = bundled + user

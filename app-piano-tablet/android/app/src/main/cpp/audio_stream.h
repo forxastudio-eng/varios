@@ -32,6 +32,7 @@ private:
     int sampleRate_ = 48000, burst_ = 0;
     bool exclusive_ = false;
     float latencyEma_ = 0;
+    int32_t xruns_ = 0;
 };
 
 }  // namespace pc

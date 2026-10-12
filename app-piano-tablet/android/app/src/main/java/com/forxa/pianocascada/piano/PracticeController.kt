@@ -49,7 +49,7 @@ class PracticeController(
     var loopOn by mutableStateOf(false); private set
     var speed by mutableStateOf(speed); private set
     var mode by mutableStateOf(mode); private set
-    var hands by mutableStateOf(hands); private set
+    var hands by mutableStateOf(if (level == 1) HandsMode.BOTH else hands); private set
     var level by mutableStateOf(level); private set
     var combo by mutableStateOf(0); private set
     var accuracy by mutableStateOf(0f); private set
@@ -146,7 +146,7 @@ class PracticeController(
     }
 
     private fun initialLeft(): Float {
-        val s = song ?: return 23f
+        if (song == null) return 23f
         val span = settings.keyboard.reducedSpan
         val all = notesAll
         if (all.isEmpty()) return KeyboardPlanner.reducedLeft(60, 72, span)
@@ -155,7 +155,7 @@ class PracticeController(
         val whiteSpan = Notes.whiteIndex(Notes.whiteAtOrAbove(mx)) - Notes.whiteIndex(Notes.whiteAtOrBelow(mn)) + 1
         if (whiteSpan <= span) return KeyboardPlanner.reducedLeft(mn, mx, span)
         val firstPitches = all.take(12).map { it.pitch }
-        return KeyboardPlanner.reducedLeft(firstPitches.min(), firstPitches.max(), span).also { @Suppress("UNUSED_EXPRESSION") s }
+        return KeyboardPlanner.reducedLeft(firstPitches.min(), firstPitches.max(), span)
     }
 
     private fun buildSession(fromMs: Double, toMs: Double) {
@@ -200,7 +200,7 @@ class PracticeController(
     fun togglePlay() { if (playing) pause() else play() }
 
     fun restart() {
-        val s = song ?: return
+        if (song == null) return
         audio.play(false)
         audio.allOff()
         audio.seek(0.0)
@@ -211,7 +211,6 @@ class PracticeController(
         audio.loop(0.0, 0.0, false)
         playing = false
         updateUi(force = true)
-        @Suppress("UNUSED_EXPRESSION") s
     }
 
     fun seekToFraction(f: Float) {
@@ -241,7 +240,11 @@ class PracticeController(
 
     fun changeMode(m: PracticeMode) { mode = m; reconfigure(currentBar()) }
     fun changeHands(h: HandsMode) { hands = h; reconfigure(currentBar()) }
-    fun changeLevel(l: Int) { level = l; reconfigure(currentBar()) }
+    fun changeLevel(l: Int) {
+        level = l
+        if (l == 1) hands = HandsMode.BOTH   // el nivel 1 solo tiene la mano derecha: con «Izquierda» no habría nada que tocar
+        reconfigure(currentBar())
+    }
 
     fun currentBar(): Int {
         val s = song ?: return 0
@@ -303,7 +306,7 @@ class PracticeController(
 
         // fin de la canción
         if (!finished && !loopOn) {
-            val done = (mode != PracticeMode.LISTEN && session.isFinished() && session.total > 0 && p > lastNoteEnd() - 1.0) ||
+            val done = (mode != PracticeMode.LISTEN && session.isFinished() && session.total > 0 && p >= lastNoteEnd()) ||
                 p >= s.totalMs + 200.0
             if (done && playing) finish()
         }
@@ -311,12 +314,15 @@ class PracticeController(
         lastUiNs = if (nowNs - lastUiNs > 90_000_000L) nowNs else lastUiNs
     }
 
-    private fun lastNoteEnd(): Double = songNotes.maxOfOrNull { if (it.sessionIdx >= 0) it.startMs else 0.0 } ?: 0.0
+    /** Instante en que termina la última nota que debe tocar el usuario (máx. 0,8 s tras su inicio). */
+    private fun lastNoteEnd(): Double =
+        songNotes.maxOfOrNull { if (it.sessionIdx >= 0) it.startMs + minOf(it.durMs, 800.0) else 0.0 } ?: 0.0
 
     private fun finish() {
         playing = false
         finished = true
         audio.play(false)
+        if (session.total == 0) return   // nada que puntuar (p. ej. una mano sin notas)
         val r = PracticeResult(session.accuracy(), session.stars(), session.wrongPresses, session.bestCombo, session.perfect, session.total)
         result = r
         if (!releasedFinish) { releasedFinish = true; if (mode != PracticeMode.LISTEN) onFinished?.invoke(r) }
@@ -355,7 +361,7 @@ class PracticeController(
         val strength = adaptive.observe(sizeMm)
         val vel = mapper.velocity(strength, pitch)
         audio.noteOn(pitch, vel)
-        if (song == null || mode == PracticeMode.LISTEN) return 0
+        if (song == null || mode == PracticeMode.LISTEN || !playing) return 0   // en pausa solo suena: no puntúa
         val ev = session.onKeyDown(pitch, posMs)
         return when (ev.feedback) {
             Feedback.CORRECT -> {

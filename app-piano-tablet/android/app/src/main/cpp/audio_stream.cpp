@@ -66,6 +66,7 @@ bool AudioStream::start() {
     AAudioStream_setBufferSizeInFrames(stream_, std::max(burst_ * 2, 128));
     engine_->setSampleRate(static_cast<float>(sampleRate_));
     latencyEma_ = 0;
+    xruns_ = 0;
     aaudio_result_t r = AAudioStream_requestStart(stream_);
     if (r != AAUDIO_OK) {
         LOGE("requestStart falló: %s", AAudio_convertResultToText(r));
@@ -85,6 +86,16 @@ void AudioStream::stop() {
 
 void AudioStream::updateLatency() {
     if (!stream_) return;
+    // si hay cortes (xruns) se agranda el búfer una ráfaga, hasta su capacidad máxima
+    int32_t xr = AAudioStream_getXRunCount(stream_);
+    if (xr > xruns_) {
+        xruns_ = xr;
+        int32_t cur = AAudioStream_getBufferSizeInFrames(stream_);
+        int32_t cap = AAudioStream_getBufferCapacityInFrames(stream_);
+        int32_t want = std::min(cap, cur + std::max(burst_, 64));
+        if (want > cur) AAudioStream_setBufferSizeInFrames(stream_, want);
+        LOGI("xrun %d: búfer %d → %d frames", xr, cur, want);
+    }
     int64_t framePos = 0, timeNs = 0;
     if (AAudioStream_getTimestamp(stream_, CLOCK_MONOTONIC, &framePos, &timeNs) != AAUDIO_OK) {
         float est = 1000.0f * AAudioStream_getBufferSizeInFrames(stream_) / std::max(1, sampleRate_);

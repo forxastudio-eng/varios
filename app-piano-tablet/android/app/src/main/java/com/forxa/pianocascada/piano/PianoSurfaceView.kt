@@ -143,6 +143,7 @@ class PianoSurfaceView(context: Context) : View(context) {
 
     override fun onDetachedFromWindow() {
         attached = false
+        releaseAll()
         Choreographer.getInstance().removeFrameCallback(frameCb)
         super.onDetachedFromWindow()
     }
@@ -514,7 +515,7 @@ class PianoSurfaceView(context: Context) : View(context) {
     }
 
     private fun drawMiniMap(c: Canvas, pos: Double, src: FrameSource?) {
-        val r = rows.firstOrNull() ?: return
+        if (rows.isEmpty()) return
         val y = dp(30f)
         val hh = dp(12f)
         val mw = width - dp(48f)
@@ -524,7 +525,6 @@ class PianoSurfaceView(context: Context) : View(context) {
         p.color = 0x22FFFFFF
         for (i in 0 until Notes.WHITE_KEYS) c.drawRect(x0 + i * wk, y, x0 + i * wk + max(1f, wk - 1f), y + hh, p)
         // ventana visible
-        val kb = r.kb
         val leftIdx = (curLeft.takeIf { it >= 0f } ?: 23f)
         p.color = 0x445AB8FF
         rf.set(x0 + leftIdx * wk, y - dp(2f), x0 + (leftIdx + reducedSpan) * wk, y + hh + dp(2f))
@@ -542,7 +542,6 @@ class PianoSurfaceView(context: Context) : View(context) {
                 c.drawCircle(x0 + (wi + 0.5f) * wk, y + hh / 2f, dp(2.4f), p)
             }
         }
-        @Suppress("UNUSED_VARIABLE") val unused = kb
     }
 
     // ------------------------------------------------------------------ tacto
@@ -576,8 +575,8 @@ class PianoSurfaceView(context: Context) : View(context) {
                         if (cur < 0) continue
                         val np = pitchAt(e.getX(i), e.getY(i))
                         if (np != null && np != cur) {
-                            release(cur, l)
                             ptrPitch[id] = -1
+                            release(cur, l)
                             press(e, i, l)
                         }
                     }
@@ -586,11 +585,11 @@ class PianoSurfaceView(context: Context) : View(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val idx = e.actionIndex
                 val id = e.getPointerId(idx)
-                if (id < ptrPitch.size && ptrPitch[id] >= 0) { release(ptrPitch[id], l); ptrPitch[id] = -1 }
+                if (id < ptrPitch.size && ptrPitch[id] >= 0) { val pit = ptrPitch[id]; ptrPitch[id] = -1; release(pit, l) }
                 if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
             }
             MotionEvent.ACTION_CANCEL -> {
-                for (i in ptrPitch.indices) if (ptrPitch[i] >= 0) { release(ptrPitch[i], l); ptrPitch[i] = -1 }
+                for (i in ptrPitch.indices) if (ptrPitch[i] >= 0) { val pit = ptrPitch[i]; ptrPitch[i] = -1; release(pit, l) }
             }
         }
         return true
@@ -601,6 +600,7 @@ class PianoSurfaceView(context: Context) : View(context) {
     private fun press(e: MotionEvent, idx: Int, l: KeyListener?) {
         val id = e.getPointerId(idx)
         if (id >= ptrPitch.size) return
+        if (ptrPitch[id] >= 0) { val old = ptrPitch[id]; ptrPitch[id] = -1; release(old, l) }   // un ACTION_UP perdido
         val pitch = pitchAt(e.getX(idx), e.getY(idx))
         if (pitch == null) { l?.onBackgroundTap(); return }
         val mm = touchSizeMm(e, idx)
@@ -616,12 +616,15 @@ class PianoSurfaceView(context: Context) : View(context) {
         // otra pulsación puede seguir sujetando la misma tecla
         var still = false
         for (v in ptrPitch) if (v == pitch) still = true
-        if (!still) userDown[pitch] = false
+        if (still) return
+        userDown[pitch] = false
         l?.onKeyUp(pitch)
     }
 
+    /** Suelta todo lo que hubiera pulsado (al salir de la pantalla o al pasar la app a segundo plano). */
     fun releaseAll() {
-        for (i in ptrPitch.indices) ptrPitch[i] = -1
+        val l = listener
+        for (i in ptrPitch.indices) if (ptrPitch[i] >= 0) { val pit = ptrPitch[i]; ptrPitch[i] = -1; release(pit, l) }
         java.util.Arrays.fill(userDown, false)
     }
 }

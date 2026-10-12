@@ -119,7 +119,7 @@ fun AppRoot(app: PianoApp) {
         )
         is Screen.Detail -> {
             val song = songs.firstOrNull { it.id == s.songId }
-            if (song == null) screen = Screen.Library else SongDetailScreen(
+            if (song == null) LaunchedEffect(s) { screen = Screen.Library } else SongDetailScreen(
                 song, progress[song.id], settings, onBack = { screen = Screen.Library },
                 onFavorite = { app.progress.toggleFavorite(song.id) },
                 onStart = { p -> screen = Screen.Practice(p) },

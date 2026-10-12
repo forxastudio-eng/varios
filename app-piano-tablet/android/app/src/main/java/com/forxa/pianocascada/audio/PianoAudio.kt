@@ -27,6 +27,7 @@ class PianoAudio(private val context: Context) {
     var ready = false
         private set
     private var started = false
+    private var needsRestart = false
     var speed = 1f
         private set
 
@@ -34,9 +35,10 @@ class PianoAudio(private val context: Context) {
         override fun run() {
             if (started) {
                 NativeEngine.nUpdateLatency()
-                if (NativeEngine.nNeedsRestart()) {
+                if (needsRestart || NativeEngine.nNeedsRestart()) {
                     Log.i(TAG, "reiniciando salida de audio")
-                    NativeEngine.nStart()
+                    // si falla (p. ej. mientras cambia el dispositivo de salida) se vuelve a intentar en el siguiente ciclo
+                    needsRestart = !NativeEngine.nStart()
                 }
                 handler.postDelayed(this, 250)
             }
