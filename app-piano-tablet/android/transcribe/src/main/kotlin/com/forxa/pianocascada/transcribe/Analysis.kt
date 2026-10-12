@@ -1,5 +1,6 @@
 package com.forxa.pianocascada.transcribe
 
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
@@ -16,7 +17,7 @@ data class BeatGrid(
     val bpm: Double,
     val beatSec: Double,
     val firstBeatSec: Double,   // instante (s) del pulso nº 0 de la rejilla
-    val beatsPerBar: Int,
+    val beatsPerBar: Int,           // pulsos (negras) por compás
     val downbeatShift: Int,     // cuántos pulsos hay antes del primer compás completo (anacrusa)
     val confidence: Float,
 )
@@ -32,11 +33,11 @@ object Analysis {
      */
     fun clean(notes: List<RawNote>, out: ModelOutput?, cfg: CleanConfig = CleanConfig()): List<RawNote> {
         var cur = notes.sortedWith(compareBy<RawNote> { it.pitch }.thenBy { it.start })
-        // 1. fusión
+        // 1. fusión (desactivada por defecto: la evaluación mostró que destruye notas repetidas)
         val merged = ArrayList<RawNote>()
         for (n in cur) {
             val last = merged.lastOrNull()
-            if (last != null && last.pitch == n.pitch && n.start - last.end <= cfg.mergeGapSec && n.start >= last.start) {
+            if (cfg.mergeGapSec > 0.0 && last != null && last.pitch == n.pitch && n.start - last.end <= cfg.mergeGapSec && n.start >= last.start) {
                 val strongOnset = out != null && onsetAround(out, n.start, n.pitch) >= cfg.reStrikeOnset
                 if (!strongOnset) {
                     merged[merged.size - 1] = last.copy(end = max(last.end, n.end), amp = max(last.amp, n.amp))
@@ -145,6 +146,9 @@ object Analysis {
         // normaliza a 55–130 ppm
         while (60.0 / beat > 130.0) beat *= 2.0
         while (60.0 / beat < 55.0) beat /= 2.0
+        // refinado fino de tempo y fase usando los ataques de las notas (rejilla de semicorcheas)
+        val refined = refineGrid(notes, beat, 0.0)
+        beat = refined.first
         val bpm = 60.0 / beat
         // fase: la posición que acumula más energía de ataque
         val pf = beat * fps
@@ -166,7 +170,28 @@ object Analysis {
             if (s > bestPS) { bestPS = s; bestPhase = phase }
             phase += 0.5
         }
-        val firstBeat = bestPhase / fps
+        var firstBeat = bestPhase / fps
+        // el ajuste con las notas fija la rejilla de semicorcheas; falta decidir cuál de sus 4 posiciones es el PULSO:
+        // la de más energía de ataque, con una pequeña preferencia por que la primera nota caiga en un pulso
+        val t0 = refineGrid(notes, beat, firstBeat).second
+        val sx = beat / 4.0
+        val firstNote = notes.minOf { it.start }
+        var bestJ = 0
+        var bestJScore = -1e18
+        val base = t0 - Math.floor(t0 / beat) * beat
+        for (j in 0 until 4) {
+            val ph = base + j * sx
+            var sc = 0.0
+            var k = ph * fps
+            var cnt = 0
+            while (k < n - 1) { sc += env[Math.floor(k).toInt()]; cnt++; k += pf }
+            sc /= max(1, cnt)
+            val rel = ((firstNote - ph) / beat)
+            val dist = abs(rel - Math.round(rel))
+            if (dist < 0.12) sc *= 1.25
+            if (sc > bestJScore) { bestJScore = sc; bestJ = j }
+        }
+        firstBeat = base + bestJ * sx
         // compás: ¿qué agrupación (2, 3 o 4 pulsos) concentra más energía en el primer pulso?
         val beatEnergy = ArrayList<Double>()
         var kk = bestPhase
@@ -188,7 +213,7 @@ object Analysis {
                 for ((i, e) in beatEnergy.withIndex()) if ((i - shift).mod(bpb) == 0) { down += e; dn++ } else { other += e; on++ }
                 if (dn == 0 || on == 0) continue
                 val contrast = (down / dn) / ((other / on) + 1e-9)
-                val adj = if (bpb == 4) contrast * 1.04 else contrast   // 4/4 es lo más frecuente
+                val adj = when (bpb) { 4 -> contrast * 1.18; 3 -> contrast * 1.06; else -> contrast }   // 4/4 es lo más frecuente
                 if (adj > bestContrast) { bestContrast = adj; bestBpb = bpb; bestShift = shift }
             }
         }
@@ -197,6 +222,34 @@ object Analysis {
         val conf = (ac[bestLag] / (meanAc + 1e-12)).toFloat().coerceIn(0f, 10f) / 10f
         // el primer compás completo empieza en el pulso «bestShift» de la rejilla
         return BeatGrid(bpm, beat, firstBeat, bestBpb, bestShift, conf)
+    }
+
+    /**
+     * Ajusta (periodo del pulso, fase) para que los ataques caigan en una rejilla de semicorcheas:
+     * maximiza Σ amp·cos(2π·4·(t − t0)/beat). Devuelve (pulso, t0) con t0 elegido entre los 4 candidatos de
+     * semicorchea el más cercano a [phaseHint].
+     */
+    fun refineGrid(notes: List<RawNote>, beat: Double, phaseHint: Double): Pair<Double, Double> {
+        if (notes.size < 8) return beat to phaseHint
+        val w = notes.map { (it.amp.toDouble() + 0.3) * (if (it.onsetStrength > 0f) 1.0 else 0.5) }
+        var bestBeat = beat
+        var bestScore = -1e18
+        var bestT0 = phaseHint
+        val steps = 80
+        for (si in -steps..steps) {
+            val b = beat * (1.0 + 0.03 * si / steps)
+            val sixteenth = b / 4.0
+            for (pi in 0 until 48) {
+                val t0 = pi * sixteenth / 48.0
+                var sc = 0.0
+                for ((k, n) in notes.withIndex()) sc += w[k] * cos(2 * PI * (n.start - t0) / sixteenth)
+                if (sc > bestScore) { bestScore = sc; bestBeat = b; bestT0 = t0 }
+            }
+        }
+        // t0 solo está definido módulo una semicorchea: se elige el que cae más cerca de la pista de fase
+        val sx = bestBeat / 4.0
+        val k = Math.round((phaseHint - bestT0) / sx)
+        return bestBeat to (bestT0 + k * sx)
     }
 
     // ------------------------------------------------------------------ cuantización
@@ -267,10 +320,17 @@ object Analysis {
 
     // ------------------------------------------------------------------ manos
     /**
-     * Reparte las notas entre mano izquierda y derecha: umbral adaptado a la tesitura (k-medias sobre las alturas,
-     * ponderadas por duración) y, en acordes que cruzan el umbral, las notas más agudas van a la derecha.
-     * Devuelve true para la mano derecha.
+     * Reparte las notas entre mano izquierda y derecha (true = derecha).
+     * En cada ataque se elige un umbral de altura que: mantiene a cada mano en un alcance razonable (≈ una octava),
+     * respeta las notas que siguen sonando (cada una conserva su mano), cambia poco respecto al ataque anterior y
+     * se mantiene cerca de la tesitura global (k-medias ponderadas por duración).
      */
+    /** Pesos del reparto de manos (se barren en la evaluación): tramo, continuidad, tesitura global, retenidas. */
+    var handSpanW = 0.5
+    var handContW = 0.02
+    var handPriorW = 0.3
+    var handHeldW = 6.0
+
     fun splitHands(notes: List<BeatNote>): BooleanArray {
         if (notes.isEmpty()) return BooleanArray(0)
         var lo = 48.0; var hi = 72.0
@@ -283,9 +343,39 @@ object Analysis {
             if (wl > 0) lo = sl / wl
             if (wh > 0) hi = sh / wh
         }
-        val boundary = ((lo + hi) / 2.0).coerceIn(52.0, 66.0)
-        val right = BooleanArray(notes.size) { notes[it].pitch >= boundary }
-        // las notas que suenan a la vez y rodean el umbral: si hay dos o más por encima de C4 juntas, van a la derecha
+        val b0 = ((lo + hi) / 2.0).coerceIn(52.0, 66.0)
+        val right = BooleanArray(notes.size)
+        val order = notes.indices.sortedWith(compareBy({ notes[it].start }, { notes[it].pitch }))
+        var theta = b0
+        var i = 0
+        val held = ArrayList<Int>()        // índices ya asignados que siguen sonando
+        while (i < order.size) {
+            var j = i
+            val t0 = notes[order[i]].start
+            while (j < order.size && notes[order[j]].start - t0 < 0.08) j++
+            val group = order.subList(i, j)
+            held.removeAll { notes[it].end <= t0 + 0.02 }
+            val pitches = (group.map { notes[it].pitch } + held.map { notes[it].pitch }).sorted()
+            // candidatos: puntos intermedios entre alturas consecutivas y los extremos
+            val cands = ArrayList<Double>()
+            cands.add(pitches.first() - 0.5)
+            for (k in 0 until pitches.size - 1) if (pitches[k + 1] > pitches[k]) cands.add((pitches[k] + pitches[k + 1]) / 2.0)
+            cands.add(pitches.last() + 0.5)
+            var bestC = theta; var bestCost = Double.MAX_VALUE
+            for (c in cands) {
+                var cost = 0.0
+                // notas retenidas que quedarían en la mano contraria
+                for (h in held) { val onRight = notes[h].pitch > c; if (onRight != right[h]) cost += handHeldW }
+                val leftP = pitches.filter { it < c }; val rightP = pitches.filter { it > c }
+                if (leftP.size > 1) cost += max(0, leftP.max() - leftP.min() - 12) * handSpanW
+                if (rightP.size > 1) cost += max(0, rightP.max() - rightP.min() - 12) * handSpanW
+                cost += abs(c - theta) * handContW + abs(c - b0) * handPriorW
+                if (cost < bestCost) { bestCost = cost; bestC = c }
+            }
+            theta = bestC
+            for (g in group) { right[g] = notes[g].pitch > theta; held.add(g) }
+            i = j
+        }
         return right
     }
 }
@@ -294,15 +384,15 @@ data class BeatNote(val start: Double, val dur: Double, val pitch: Int, val amp:
     val end: Double get() = start + dur
 }
 
+/** Limpieza geométrica ligera. El grueso de la precisión lo aporta [NoteQuality] (filtro entrenado). */
 data class CleanConfig(
-    val mergeGapSec: Double = 0.09,
+    val mergeGapSec: Double = 0.0,
     val reStrikeOnset: Float = 0.45f,
-    val ghostRatio: Float = 1.6f,
+    val ghostRatio: Float = 0f,
     val ghostOnsetSec: Double = 0.07,
     val ghostKeepOnset: Float = 0.8f,
-    val minAmp: Float = 0.33f,
+    val minAmp: Float = 0f,
     val weakShortSec: Double = 0.2,
     val maxPolyphony: Int = 10,
 )
 
-@Suppress("unused") private fun cosDeg(x: Double) = cos(x)

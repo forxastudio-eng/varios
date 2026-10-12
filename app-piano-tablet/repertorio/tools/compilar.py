@@ -346,7 +346,18 @@ def vlq(n):
     return bytes(reversed(out))
 
 
-def pista_midi(notas, canal, ppq, nombre, tempo_us=None):
+def meta_compas_tonalidad(c):
+    """Eventos meta de compás (FF 58) y tonalidad (FF 59)."""
+    n, d = map(int, c["meter"].split("/"))
+    dd = {1: 0, 2: 1, 4: 2, 8: 3, 16: 4}[d]
+    clave = c["key"]
+    sf = MAYORES.get(clave, MENORES.get(clave, 0))
+    menor = 1 if clave in MENORES else 0
+    return (b"\x00\xFF\x58\x04" + bytes([n, dd, 24, 8]) +
+            b"\x00\xFF\x59\x02" + struct.pack(">b", sf) + bytes([menor]))
+
+
+def pista_midi(notas, canal, ppq, nombre, tempo_us=None, extra=b""):
     ev = []
     for ini, dur, p in notas:
         ev.append((int(round(float(ini) * ppq)), 1, p))
@@ -357,6 +368,7 @@ def pista_midi(notas, canal, ppq, nombre, tempo_us=None):
     data += b"\x00\xFF\x03" + vlq(len(nb)) + nb
     if tempo_us:
         data += b"\x00\xFF\x51\x03" + tempo_us.to_bytes(3, "big")
+    data += extra
     data += b"\x00" + bytes([0xC0 | canal, 0])  # piano
     ultimo = 0
     for t, on, p in ev:
@@ -370,7 +382,7 @@ def pista_midi(notas, canal, ppq, nombre, tempo_us=None):
 def escribir_midi(ruta, c, res):
     ppq = 480
     tempo = int(60_000_000 / int(c["tempo"]))
-    pistas = [pista_midi(res["RH"][0], 0, ppq, "Mano derecha", tempo),
+    pistas = [pista_midi(res["RH"][0], 0, ppq, "Mano derecha", tempo, meta_compas_tonalidad(c)),
               pista_midi(res["LH"][0], 1, ppq, "Mano izquierda")]
     cab = b"MThd" + struct.pack(">IHHH", 6, 1, len(pistas), ppq)
     with open(ruta, "wb") as f:

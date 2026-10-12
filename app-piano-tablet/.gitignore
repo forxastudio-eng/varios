@@ -11,3 +11,4 @@ __pycache__/
 *.pyc
 # Pruebas locales
 tools/host_test/out/
+tools/eval_data/

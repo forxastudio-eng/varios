@@ -30,3 +30,13 @@ tasks.test {
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
 }
+
+// Evaluación local del transcriptor con audio de referencia (ver tools/make_eval_audio.py):
+//   EVAL_DIR=../../tools/eval_data EVAL_MODEL=../app/src/main/assets/basic_pitch.onnx ./gradlew :transcribe:evalTranscription
+tasks.register<JavaExec>("evalTranscription") {
+    group = "verification"
+    description = "Mide la precisión del transcriptor (F1 de notas, tempo, tonalidad, manos)"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.forxa.pianocascada.transcribe.EvalKt")
+    maxHeapSize = "3g"
+}
