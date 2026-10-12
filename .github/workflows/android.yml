@@ -32,10 +32,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Instalar SDK, NDK y CMake
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.0.12077973" "cmake;3.22.1"
+      - name: Instalar el SDK de Android
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.0.12077973 cmake;3.22.1"
 
       - name: Pruebas de la lógica pura (core)
         run: PIANO_CORE_ONLY=1 ./gradlew :core:test --no-daemon
