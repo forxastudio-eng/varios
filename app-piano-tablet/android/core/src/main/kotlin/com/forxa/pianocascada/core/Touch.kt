@@ -37,3 +37,16 @@ class VelocityMapper(
         }
     }
 }
+
+/**
+ * Autocalibración de la fuerza del toque: aprende el rango habitual del tamaño de contacto del dedo (en mm)
+ * para que "tocar suave" y "tocar fuerte" usen todo el rango de velocidades sin configurar nada.
+ */
+class AdaptiveStrength(var lo: Float = 5f, var hi: Float = 13f) {
+    fun observe(sizeMm: Float): Float {
+        if (sizeMm < lo) lo = sizeMm else lo += (sizeMm - lo) * 0.01f
+        if (sizeMm > hi) hi = sizeMm else hi -= (hi - sizeMm) * 0.01f
+        if (hi - lo < 3f) { val mid = (hi + lo) / 2f; lo = mid - 1.5f; hi = mid + 1.5f }
+        return ((sizeMm - lo) / (hi - lo)).coerceIn(0f, 1f)
+    }
+}

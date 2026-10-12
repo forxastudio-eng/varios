@@ -91,6 +91,18 @@ data class Song(
 }
 
 object SongLibrary {
+    /** Canción mínima de una sola mano (para el tutorial y los ejercicios). */
+    fun simple(id: String, title: String, bpm: Int, notes: List<SongNote>, meter: String = "4/4"): Song {
+        val per = if (meter == "3/4") 3f else 4f
+        val total = (notes.maxOfOrNull { it.end } ?: 4f).let { kotlin.math.ceil(it / per) * per }
+        val bars = (0 until (total / per).toInt()).map { it * per }
+        return Song(
+            id = id, title = title, composer = "", era = "", work = "", key = "C", originalKey = "C", meter = meter, bpm = bpm,
+            difficulty = 1, tip = "", fun_ = "", source = SongSource.TRANSCRIPTION, pulse = 1f, beatsPerBar = per, pickup = 0f,
+            totalBeats = total, durationSec = total * 60f / bpm, barStarts = bars, rh = notes, melody = null, lh = emptyList(), bass = emptyList(),
+        )
+    }
+
     fun parse(json: String): List<Song> {
         val root = Json.parse(json).asMap()
         return root["canciones"].asList().map { fromMap(it.asMap()) }.sortedBy { it.order }
