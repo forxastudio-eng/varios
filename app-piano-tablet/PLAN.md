@@ -22,6 +22,27 @@
 
 ---
 
+## Estado de la implementación (primer APK)
+
+Lo que **ya existe** en este repositorio frente a lo planificado abajo:
+
+| Área | Estado |
+|---|---|
+| Motor de sonido C++ (sampler de piano FluidR3 «Yamaha Grand», pedal, ecualizador de 5 bandas, reverb, limitador, secuenciador con reloj de audio) | ✅ hecho y probado en PC |
+| Cascada + teclados (2 filas de 26 teclas blancas y reducido), luz en las teclas, letras C D E…, 120 Hz | ✅ hecho (⚠️ sin probar en tablet real) |
+| Ecualizador de sonido (sencillo + avanzado, 5 timbres, sala) y ecualizador de teclado (curva, zonas, tamaño, deslizar) | ✅ |
+| Modos de práctica: Espera, Ritmo, Escuchar; niveles 1–3; manos; velocidad; bucle de 4 compases; solo teclas blancas | ✅ |
+| Tutorial inicial guiado | ✅ |
+| **Biblioteca con 17 piezas verificadas** (9 con partitura exacta del corpus de music21; 8 transcripciones de alta confianza) | ✅ (el plan hablaba de 50: se priorizó la exactitud; ver `LICENCIAS.md`) |
+| Importar **audio** (MP3/M4A/WAV…): decodificación en la tablet + Basic Pitch (ONNX) + filtro de calidad entrenado, tempo, compás, tonalidad, manos | ✅ F1 de notas ≈ 0,885 en el banco de pruebas |
+| Importar **MIDI** (p. ej. «Claro de luna») | ✅ |
+| Importar **PDF / foto**: servidor en casa (Audiveris + music21) | ✅ servidor y cliente; la precisión se mide con el flujo `omr-eval` de GitHub Actions |
+| Piezas **«Claro de luna»** y similares | Se incluirá cuando se aporte el MIDI/MusicXML (por la decisión de usar solo material verificado) |
+| Revisión de errores | ✅ ver `REPORTE_ERRORES.md` |
+
+Diferencias con el plan original: la app es nativa Android (Kotlin + Compose + C++), no multiplataforma; la importación de audio
+se hace **en la tablet** (sin servidor); solo el PDF/foto necesita el servidor.
+
 ## 0. Resumen
 
 Una app de piano para tablet pensada para **aprender desde cero sin saber música**:
