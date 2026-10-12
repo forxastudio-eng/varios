@@ -4,3 +4,4 @@ python-multipart==0.0.17
 music21==9.3.0
 pillow==11.0.0
 pypdf==5.1.0
+numpy
