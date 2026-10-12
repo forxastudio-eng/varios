@@ -1,518 +1,733 @@
 # Plan de desarrollo: app de piano para tablet ("Piano Cascada")
 
 > Nombre provisional: **Piano Cascada**
-> Dispositivo objetivo: **Samsung Galaxy Tab S8 Ultra** (uso en horizontal)
-> Autor del plan: equipo de desarrollo · Fecha: 12/10/2026 · Estado: borrador v1
+> Dispositivo: **Samsung Galaxy Tab S8 Ultra**, siempre en horizontal
+> Uso: **personal** (por ahora una sola persona, sin publicar en tiendas)
+> Público: **personas que no son músicos y dan sus primeros pasos**
+> Fecha: 12/10/2026 · Estado: **borrador v2**
+
+---
+
+## Cambios respecto a la v1
+
+| Tema | v1 | v2 (esta versión) |
+|---|---|---|
+| Ecualización | Había que validar qué significaba "ecualizar" | **Se incluyen los dos**: ecualizador de **sonido** (§13) y ecualizador de **teclado** (§14) |
+| Nombres de notas | Inglés, latino, números… | **Solo letras: C D E F G A B** (§11) |
+| Sonido y fluidez | Se proponían opciones | **Decisión cerrada**: motor de muestras propio en C++ y render a 120 fps (§4 y §5) |
+| Uso | Comercial, con tiendas y suscripción | **Personal**: sin cuentas, sin tienda, sin cobros, instalación directa (§20) |
+| Diseño | Estética neón genérica | **Premium minimalista con luz en las teclas** y sistema de diseño completo (§8 y §9) |
+| Público | Todos los niveles | **No músicos, principiantes**: sin jerga, simplificador de canciones, camino de aprendizaje y coach (§7.5, §16 y §17) |
+| Procesado de MP3/PDF | Backend en la nube | **En la tablet, más un "servidor en casa" opcional** en tu PC (§7.4) |
 
 ---
 
 ## 0. Resumen
 
-Una app de piano completa para tablet Android. Puedes **importar una partitura (MIDI, MusicXML, PDF o foto) o un audio (MP3/WAV)** y la app lo convierte en **notas que caen desde arriba con colores** (estilo "cascada" o *piano roll*, como en la imagen de referencia). La **longitud de cada barra es la duración de la nota**, y mientras tocas la app **escucha lo que haces** y te corrige en tiempo real.
+Una app de piano para tablet pensada para **aprender desde cero sin saber música**:
 
-Lo que la diferencia de otras apps:
-
-1. **Teclado de 88 teclas partido en dos filas equilibradas**, para que quepa entero en la pantalla de 14,6" con teclas tocables.
-2. **Teclado reducido** que se ajusta solo al rango de la canción y aprovecha mejor el espacio.
-3. **Varios modos de ecualización**, tanto del **sonido** (EQ, timbre, reverb) como del **teclado** (sensibilidad, tamaño y respuesta por zonas).
-4. **Varios modos de señalización**: cascada, teclas iluminadas, nombres de nota, digitación, colores por mano, por nota o por octava, y partitura que se desplaza.
-5. **Tutorial de inicio guiado e interactivo.**
+- Importas una **canción (MIDI, MusicXML, PDF, foto o MP3)**.
+- La app la convierte en **notas de colores que caen** hacia el teclado. Cada nota lleva su **letra (C, D, E…)** y la **longitud de la barra es su duración**.
+- Si la canción es difícil, la app **la simplifica** para tu nivel.
+- Mientras tocas, **la tecla correcta se ilumina**. La app **te espera** si no llegas y **te dice qué tal lo hiciste**, sin tecnicismos.
+- Sonido de **piano de cola real** (muestras grabadas) con muy poca latencia, y animaciones fluidas a **120 fps**.
+- Dos formas de ver el teclado:
+  - **Completo**: las 88 teclas partidas en **dos filas iguales**.
+  - **Reducido**: teclas grandes, casi del tamaño de un piano real.
+- **Dos ecualizadores**: uno para el **sonido** y otro para la **respuesta del teclado**.
+- **Tutorial de inicio guiado** y un **camino de lecciones cortas** para avanzar paso a paso.
 
 ---
 
-## 1. Dispositivo objetivo: Galaxy Tab S8 Ultra
+## 1. Principios del producto
+
+Todas las decisiones de diseño se comprueban contra estos cinco principios:
+
+1. **Cero jerga musical.** Nada de "corchea", "clave de fa" ni "sostenido" sin explicar. Se habla de *nota larga / nota corta*, *mano derecha / mano izquierda* y *tecla negra de la derecha*. Las letras C‑D‑E son lo único "técnico", y se enseñan en el primer minuto.
+2. **Éxito en los primeros 5 minutos.** La primera vez que abres la app tocas una melodía completa.
+3. **Calma premium.** La interfaz es oscura, limpia y con pocos elementos. **La luz está en las teclas y en las notas**, no en los botones. Mientras tocas, todo lo demás desaparece.
+4. **Ergonomía primero.** Los controles quedan cerca de las manos, son grandes y se pueden pulsar sin mirar mucho. Nada obliga a soltar el teclado durante mucho tiempo.
+5. **Fluidez y sonido sin concesiones.** 120 fps constantes y una respuesta del sonido por debajo de 25 ms. Si una función pone en riesgo esto, no entra.
+
+---
+
+## 2. Dispositivo: Galaxy Tab S8 Ultra
 
 | Característica | Valor | Qué implica para la app |
 |---|---|---|
-| Pantalla | 14,6" Super AMOLED, 2960 × 1848 px, 16:10 | En horizontal hay **≈ 314 mm de ancho útil**. |
+| Pantalla | 14,6" Super AMOLED, 2960 × 1848 px, 16:10 | En horizontal hay **≈ 314 mm de ancho** y **≈ 196 mm de alto** (≈ 9,4 px/mm). |
 | Frecuencia | 120 Hz | La cascada se dibuja a **120 fps** (8,3 ms por frame). |
-| SoC | Snapdragon 8 Gen 1 | Hay GPU de sobra para la cascada con brillos y para modelos de IA ligeros en el dispositivo (TFLite/NNAPI). |
-| RAM | 8 / 12 / 16 GB | Caben las muestras de piano en memoria (≈ 300–600 MB). |
-| Audio | 4 altavoces AKG, Dolby Atmos, USB‑C | Baja latencia con AAudio/Oboe. Auriculares por USB‑C o BT (BT con aviso de latencia). |
-| Táctil | Multitáctil de 10 puntos | Acordes reales con las dos manos. |
-| S Pen | Incluido | Anotar partituras y marcar digitaciones. |
-| SO | Android 12 de serie, actualizable (One UI) | `minSdk 31`, `targetSdk` siempre la última. |
+| SoC | Snapdragon 8 Gen 1 | Hay potencia de sobra para muestras de alta calidad, reverb por convolución y modelos de IA en la tablet. |
+| RAM | 8 / 12 / 16 GB | Las muestras se precargan en parte y el resto se lee del disco (*streaming*). |
+| Audio | 4 altavoces AKG + USB‑C | Baja latencia con AAudio/Oboe y un perfil específico para los altavoces. |
+| Táctil | Multitáctil de 10 puntos | Se pueden tocar acordes con las dos manos. |
+| S Pen | Incluido | Anotar las canciones (fase posterior). |
+| SO | Android 12+ (One UI) | `minSdk 31`, `targetSdk` siempre la última. |
 
-### Cálculo clave: ¿por qué dos filas?
+**Cálculo de tamaños de tecla** (88 teclas, de las cuales 52 son blancas):
 
-- Un piano tiene **88 teclas, de las cuales 52 son blancas**.
-- **En una sola fila**: 314 mm / 52 = **6 mm por tecla blanca**. Es imposible tocar con el dedo, porque una yema mide entre 10 y 14 mm.
-- **En dos filas de 26 blancas**: 314 mm / 26 = **12,1 mm por tecla blanca**. Se puede tocar bien. Es la mitad del ancho de un piano real (23,5 mm), pero es cómodo en una tablet.
+| Diseño | Teclas blancas visibles | Ancho por tecla blanca | ¿Se puede tocar? |
+|---|---|---|---|
+| 88 teclas en 1 fila | 52 | 6 mm | ❌ Demasiado pequeña |
+| **88 teclas en 2 filas** | 26 por fila | **12,1 mm** | ✅ Cómodo |
+| **Reducido de 2 octavas (C3–C5)** | 15 | **≈ 21 mm** | ✅ Casi como un piano real (23,5 mm) |
+| Reducido de 3 octavas | 22 | ≈ 14 mm | ✅ |
 
 ---
 
-## 2. Stack tecnológico (decisión)
+## 3. Stack tecnológico (decisión cerrada)
 
-**Recomendación: app nativa Android (Kotlin) con un motor de audio en C++.**
-
-El motivo es la latencia. En un piano, más de unos 20 ms entre tocar y oír se nota mucho. Flutter y React Native añaden capas que lo complican, y además solo nos importa una plataforma (una tablet Samsung).
+Pedías buen sonido y buena fluidez, así que la elección es una **app nativa Android con el audio en C++ y la animación por GPU**. Flutter y React Native no se usan porque añaden latencia y saltos en la animación.
 
 | Capa | Tecnología | Motivo |
 |---|---|---|
-| UI general (menús, biblioteca, ajustes, tutorial) | **Kotlin + Jetpack Compose** + Material 3 | Moderno y rápido de desarrollar. Se adapta bien a pantallas grandes. |
-| Render de la cascada y del teclado | **OpenGL ES 3.2** (o Vulkan) en un `SurfaceView`/`GLSurfaceView` propio | Mantiene 120 fps estables con brillos (*bloom*) y partículas, sin pasar por Compose. |
-| Motor de audio | **C++ + Oboe (AAudio, modo MMAP de baja latencia)** | Latencia de salida objetivo **< 15 ms**. |
-| Sintetizador | Sampler propio en C++ con formato **SFZ**, o **FluidSynth** (SF2) como alternativa | Muestras multicapa por velocidad, pedal de resonancia y *release*. |
-| Muestras de piano | **Salamander Grand Piano** (CC‑BY 3.0) para empezar, y más adelante un piano propio grabado | Calidad de concierto sin coste de licencia (hay que citar la autoría). |
-| Entrada MIDI | `android.media.midi` (USB y Bluetooth LE MIDI) | Para conectar un piano digital real. |
-| Detección por micrófono | **Basic Pitch** (Spotify, Apache 2.0) en TFLite, en streaming | Detecta notas de un piano acústico sin cables. |
-| Partituras | Parser **MusicXML** propio + **Verovio** (C++, LGPL) para dibujar la partitura | Muestra el pentagrama sincronizado. |
-| MIDI | Parser `.mid` propio (o librería ligera tipo `kmidi`) | Formato principal interno. |
-| Base de datos local | **Room** (SQLite) + **DataStore** para preferencias | Biblioteca, progreso y ajustes. |
-| Inyección de dependencias | **Hilt** | Estándar en Android. |
-| Backend (procesar MP3 y PDF) | **Python + FastAPI + Celery/Redis + GPU** | Los modelos pesados de transcripción y de lectura de partituras corren mejor en el servidor. |
-| Almacenamiento en la nube (opcional) | S3 o Supabase Storage | Sincroniza la biblioteca entre dispositivos. |
+| Interfaz (menús, biblioteca, ajustes, lecciones) | **Kotlin + Jetpack Compose** + Material 3 muy personalizado | Moderno, con animaciones suaves y adaptado a pantallas grandes |
+| Cascada y teclado | **OpenGL ES 3.2** en un `SurfaceView` propio, sincronizado con `Choreographer` | 120 fps estables con brillo y luz, sin pasar por Compose |
+| Motor de audio | **C++17 + Oboe** (AAudio en modo MMAP exclusivo, 48 kHz, float) | Es la latencia más baja que permite Android |
+| Sampler | **Sampler SFZ propio** (§4) | Control total sobre la calidad: capas de velocidad, notas al soltar, resonancia |
+| Efectos | EQ con filtros biquad + **reverb por convolución** + limitador | Sonido de sala real sin que se sature |
+| Entrada MIDI | `android.media.midi` (USB y Bluetooth LE) | Por si algún día conectas un piano digital |
+| Micrófono | **Basic Pitch** (TFLite) | Para practicar con un piano acústico (fase posterior) |
+| Partitura (opcional) | **Verovio** (C++) | Mostrar el pentagrama para quien quiera aprender a leerlo |
+| Datos | **Room** (SQLite) + **DataStore** | Biblioteca, progreso y ajustes, todo dentro de la tablet |
+| Inyección de dependencias | **Hilt** | Estándar en Android |
+| Servidor en casa (opcional) | **Python + FastAPI en Docker** en tu PC | Transcripción de MP3 de alta calidad y lectura de PDF (§7.4) |
 
 ---
 
-## 3. Arquitectura general
+## 4. Motor de sonido: cómo conseguir un buen sonido
+
+### 4.1 Muestras de piano
+
+- **Piano principal: Salamander Grand Piano V3** (un Yamaha C5 de cola).
+  - Grabado a 48 kHz / 24 bits con **16 capas de velocidad**: suena distinto si tocas suave o fuerte, no solo más bajo.
+  - Incluye **muestras de liberación** (el sonido al soltar la tecla) y ruidos de pedal.
+- **Pianos alternativos**, para el selector de timbre:
+  - Un piano vertical cálido (por ejemplo *Upright Piano KW*, licencia CC0).
+  - Un piano eléctrico tipo Rhodes.
+  - Al ser de uso personal, la app también permite **cargar cualquier SFZ** que tengas.
+- **Formato en la tablet**: FLAC descomprimido al instalar a PCM de 24 bits empaquetado (o float16).
+- **Precarga y streaming**:
+  - Se cargan en RAM los primeros **≈ 100 ms de cada muestra** (≈ 150 MB).
+  - El resto se lee del disco en un hilo aparte. La memoria UFS 3.1 de la tablet lo permite sin cortes.
+  - Es la técnica que usan los samplers profesionales.
+
+### 4.2 Calidad del motor
+
+| Característica | Detalle |
+|---|---|
+| Polifonía | 128 voces. Si se llenan, se sustituyen primero las notas en *release* más suaves |
+| Capas de velocidad | Fundido entre capas vecinas, para que no haya "saltos" de timbre |
+| Liberación | Muestra específica de *release* al soltar, con una caída natural |
+| Pedal de sustain | Mantiene las notas y añade **resonancia simpática** (las cuerdas libres vibran por simpatía), simulada con un banco de resonadores |
+| Medio pedal | Con un pedal MIDI continuo |
+| Reverb | **Convolución** con respuestas de impulso de salas reales (librería OpenAIR, CC) |
+| Afinación | La4 = 440 Hz por defecto, ajustable |
+| Salida | Bus interno en float de 32 bits → EQ → reverb → **limitador suave** (evita la distorsión en los altavoces) |
+| Perfil de altavoces | Compensa los graves y añade una compresión ligera cuando suena por los altavoces de la tablet. Con auriculares el sonido es plano. Se detecta automáticamente. |
+
+### 4.3 Latencia (objetivos)
+
+| Ruta | Objetivo |
+|---|---|
+| Del toque en pantalla al sonido | **< 25 ms** |
+| De piano MIDI al sonido | **< 12 ms** |
+| Auriculares Bluetooth | 150–250 ms (es el límite del Bluetooth): la app avisa y recomienda USB‑C o los altavoces |
+
+Cómo se consigue: el evento táctil pasa al hilo de audio por una **cola sin bloqueos** (*lock‑free*), el buffer es de 2 *bursts* y el hilo de audio nunca reserva memoria ni espera a otros hilos.
+
+---
+
+## 5. Fluidez: cómo conseguir 120 fps estables
+
+- **Un solo *draw call* para todas las notas** (*instancing*): la GPU dibuja miles de barras de golpe.
+- **Las notas se precalculan** en buffers de la GPU al abrir la canción. Por frame solo se actualiza la posición del tiempo.
+- **Brillo y luz a media resolución** con difuminado separable: queda bonito y es barato.
+- **Cero reservas de memoria por frame** en el hilo de render, así el recolector de basura de Java no provoca tirones.
+- **El reloj maestro es el audio** (`AAudioStream_getTimestamp`): lo que ves y lo que oyes nunca se desincronizan (menos de 5 ms de deriva).
+- **Compose** con *Baseline Profiles* y R8, para que los menús abran al instante.
+- Cuando está en **pausa**, la pantalla baja a 60 Hz para ahorrar batería.
+- **Objetivo medible**: el 99 % de los frames por debajo de 8,3 ms con canciones de 2000 notas.
+
+---
+
+## 6. Arquitectura
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                         APP ANDROID                              │
+│                       APP ANDROID (tablet)                       │
 │                                                                  │
-│  ┌────────────┐   ┌─────────────┐   ┌──────────────────────────┐ │
-│  │  UI Compose│   │  Biblioteca │   │  Tutorial / Onboarding   │ │
-│  │ (menús,    │   │  (Room)     │   │  (motor de pasos guiados)│ │
-│  │  ajustes)  │   └──────┬──────┘   └────────────┬─────────────┘ │
-│  └─────┬──────┘          │                       │               │
-│        │         ┌───────▼───────────────────────▼──────┐        │
-│        └────────►│      MODELO DE CANCIÓN (Song)        │        │
-│                  │  pistas · notas · tempo · compases   │        │
-│                  └───────┬───────────────────┬──────────┘        │
-│                          │                   │                   │
-│        ┌─────────────────▼──┐        ┌───────▼──────────────┐    │
-│        │ TRANSPORTE / RELOJ │◄──────►│ EVALUADOR DE PRÁCTICA│    │
-│        │ (play, pausa, loop,│        │ (compara lo que tocas│    │
-│        │  velocidad, espera)│        │  con lo esperado)    │    │
-│        └───┬────────────┬───┘        └───────▲──────────────┘    │
-│            │            │                    │                   │
-│   ┌────────▼──────┐ ┌───▼──────────────┐ ┌───┴─────────────────┐ │
-│   │ RENDER GL     │ │ MOTOR AUDIO C++  │ │ ENTRADAS            │ │
-│   │ cascada +     │ │ (Oboe + sampler  │ │ táctil · MIDI ·     │ │
-│   │ teclado(s)    │ │  + EQ + reverb)  │ │ micrófono (TFLite)  │ │
-│   └───────────────┘ └──────────────────┘ └─────────────────────┘ │
-└───────────────────────────────┬──────────────────────────────────┘
-                                │ HTTPS (solo para MP3 / PDF / foto)
-┌───────────────────────────────▼──────────────────────────────────┐
-│                     BACKEND DE PROCESADO                         │
-│  FastAPI → cola Celery → workers GPU                             │
-│  · Audio → MIDI (transcripción de piano)                         │
-│  · PDF/foto → MusicXML (OMR)                                     │
-│  · Separación de manos, tempo, tonalidad, compases               │
+│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐  │
+│  │ UI Compose   │  │ Biblioteca   │  │ Tutorial + Tu camino   │  │
+│  │ (inicio,     │  │ + progreso   │  │ (lecciones + coach)    │  │
+│  │  ajustes)    │  │ (Room)       │  │                        │  │
+│  └──────┬───────┘  └──────┬───────┘  └───────────┬────────────┘  │
+│         │         ┌───────▼──────────────────────▼──────┐        │
+│         └────────►│        MODELO DE CANCIÓN (Song)     │        │
+│                   └───┬─────────────┬───────────────────┘        │
+│      ┌────────────────▼──┐   ┌──────▼─────────────┐              │
+│      │ IMPORTADORES +    │   │ TRANSPORTE / RELOJ │◄──┐          │
+│      │ SIMPLIFICADOR     │   │ (espera, bucle,    │   │          │
+│      │ (MIDI, MusicXML,  │   │  velocidad)        │   │          │
+│      │  MP3 en la tablet)│   └──┬──────────┬──────┘   │          │
+│      └────────┬──────────┘      │          │          │          │
+│               │       ┌─────────▼───┐ ┌────▼────────┐ │          │
+│               │       │ RENDER GL   │ │ AUDIO C++   │ │          │
+│               │       │ cascada +   │ │ sampler, EQ │ │          │
+│               │       │ teclado con │ │ sonido,     │ │          │
+│               │       │ luz         │ │ reverb      │ │          │
+│               │       └─────────────┘ └─────▲───────┘ │          │
+│               │                             │         │          │
+│               │       ┌─────────────────────┴───┐  ┌──┴───────┐  │
+│               │       │ ENTRADAS + EQ TECLADO   │─►│EVALUADOR │  │
+│               │       │ táctil · MIDI · micro   │  │ + COACH  │  │
+│               │       └─────────────────────────┘  └──────────┘  │
+└───────────────┼──────────────────────────────────────────────────┘
+                │ Wi‑Fi de casa (opcional: MP3 de alta calidad y PDF)
+┌───────────────▼──────────────────────────────────────────────────┐
+│   SERVIDOR EN CASA (Docker en tu PC)                             │
+│   · MP3 → notas (modelo de alta precisión + separación Demucs)   │
+│   · PDF/foto → MusicXML (Audiveris)                              │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.1 Modelo de datos central
+### 6.1 Modelo de datos
 
 ```kotlin
 data class Song(
     val id: String,
     val title: String,
-    val composer: String?,
-    val source: SourceType,          // MIDI, MUSICXML, PDF, IMAGE, AUDIO
-    val tempoMap: List<TempoChange>, // cambios de tempo (µs por negra)
+    val source: SourceType,          // MIDI, MUSICXML, PDF, IMAGE, AUDIO, LESSON
+    val tempoMap: List<TempoChange>,
     val timeSignatures: List<TimeSig>,
-    val keySignature: Key?,
+    val key: Key?,
     val tracks: List<Track>,
     val durationMs: Long,
+    val versions: Map<Level, SongVersion>, // versiones simplificadas (§7.5)
 )
-
-data class Track(val name: String, val hand: Hand?, val notes: List<Note>)
 
 data class Note(
     val pitch: Int,          // MIDI 21 (A0) … 108 (C8)
-    val startMs: Long,       // inicio en tiempo absoluto
-    val durationMs: Long,    // duración (la longitud de la barra)
-    val velocity: Int,       // 1..127
-    val hand: Hand,          // LEFT / RIGHT / UNKNOWN
-    val finger: Int?,        // 1..5 (digitación), opcional
-    val measure: Int,        // nº de compás, para loops y la partitura
+    val startMs: Long,
+    val durationMs: Long,    // longitud de la barra
+    val velocity: Int,
+    val hand: Hand,          // LEFT / RIGHT
+    val finger: Int?,        // 1..5
+    val measure: Int,
 )
 ```
 
-Todo lo que se importa (MIDI, MusicXML, PDF o MP3) **acaba convertido en un `Song`**. El render, el audio y el evaluador solo trabajan con este modelo.
-
 ---
 
-## 4. Importación de partituras y audio
+## 7. Importar canciones
 
-### 4.1 Formatos y cómo se procesa cada uno
+### 7.1 Formatos
 
-| Entrada | Dónde se procesa | Proceso | Calidad esperada |
+| Entrada | Dónde se procesa | Calidad | Comentario |
 |---|---|---|---|
-| **MIDI (.mid)** | En el dispositivo | Parseo directo y asignación de manos por pista o por canal | ★★★★★ |
-| **MusicXML / .mxl** | En el dispositivo | Parseo: notas, digitación, manos (pentagrama 1 o 2), ligaduras y repeticiones | ★★★★★ |
-| **PDF de partitura** | Backend | OMR (reconocimiento óptico musical) → MusicXML → Song | ★★★☆☆ a ★★★★☆ según la calidad del PDF |
-| **Foto de partitura** (cámara) | Backend | Corrección de perspectiva → OMR → MusicXML | ★★★☆☆ |
-| **MP3 / WAV / M4A** | Backend (con modo ligero en el dispositivo) | Transcripción de piano → MIDI → cuantización → Song | ★★★★☆ si es piano solo; ★★☆☆☆ si es una canción con banda |
+| **MIDI (.mid)** | Tablet | ★★★★★ | La forma más fiable. MuseScore y muchas webs lo exportan. |
+| **MusicXML (.musicxml / .mxl)** | Tablet | ★★★★★ | Incluye manos y a veces digitación |
+| **MP3 / WAV / M4A**, modo rápido | Tablet (Basic Pitch) | ★★★☆☆ | Sin conexión, unos segundos por minuto de audio |
+| **MP3**, modo calidad | Servidor en casa | ★★★★☆ con piano solo | Modelo de alta resolución + Demucs si hay más instrumentos |
+| **PDF / foto de partitura** | Servidor en casa | ★★★☆☆ a ★★★★☆ | Lectura óptica de partituras (Audiveris) |
 
-### 4.2 Pipeline de audio a notas (MP3)
+### 7.2 Proceso de MP3 a notas
 
-1. **Decodificar** y normalizar a 16 kHz mono (o 44,1 kHz para el modelo de alta resolución).
-2. **Separar fuentes** (opcional, solo si no es piano solo) con **Demucs**: se queda con la pista de piano o de "otros".
-3. **Transcribir piano**. Hay varias opciones y hay que elegir tras hacer pruebas:
-   - *High‑resolution Piano Transcription* (ByteDance): la más precisa para piano y detecta el pedal. **Hay que verificar su licencia.**
-   - *Onsets and Frames* (Magenta, Apache 2.0).
-   - *Basic Pitch* (Spotify, Apache 2.0): más ligera y apta para el dispositivo. Es el modo rápido, sin conexión.
-4. **Detectar tempo y compases** (beat tracking con `madmom` o `librosa`) para alinear con una rejilla y numerar compases.
-5. **Cuantizar** a semicorcheas o tresillos, con fuerza configurable (0 % = humano, 100 % = rígido).
-6. **Separar manos**: heurística por registro y continuidad de voces, más un modelo opcional. El usuario puede corregir el punto de corte.
-7. **Detectar la tonalidad**, para elegir bien entre sostenidos y bemoles al nombrar notas.
-8. **Revisión opcional por el usuario**: un editor sencillo para borrar o mover notas mal detectadas.
+Decodificar → (separar el piano con Demucs si es una canción con banda) → transcribir notas → detectar tempo y compases → cuantizar → separar manos → detectar la tonalidad → **simplificar** (§7.5).
 
-### 4.3 Pipeline de PDF o foto a notas (OMR)
+### 7.3 Experiencia de importación (pensada para principiantes)
 
-- Motores candidatos: **Audiveris** (maduro, licencia **AGPL**: hay que revisarlo legalmente si se modifica y se ofrece como servicio) y **oemer** (basado en deep learning, MIT).
-- Preproceso: binarización, enderezado y separación por páginas.
-- Salida: MusicXML. Se muestra **la partitura reconstruida junto al original** para que el usuario detecte errores.
+1. Botón grande **"+ Añadir canción"**, con opciones *Archivo*, *Cámara* y *Compartir desde otra app*.
+2. El progreso se cuenta en lenguaje humano: "Escuchando la canción…", "Buscando la melodía…", "Preparando tu versión fácil…".
+3. Al terminar, la app **te propone el nivel adecuado** ("Te recomendamos empezar por *Solo melodía*").
+4. Vista previa de 10 segundos para comprobar que suena bien, con la opción *Revisar notas* si algo falla.
 
-### 4.4 Experiencia de importación
+### 7.4 Servidor en casa (opcional)
 
-- Botón **"+ Añadir canción"** con estas opciones: Archivo · Cámara · Desde Drive/Dropbox · Compartir desde otra app (intent `ACTION_SEND`).
-- Una barra de progreso con estados ("Subiendo…", "Escuchando la música…", "Separando manos…").
-- **Notificación cuando termina**, para que el usuario pueda seguir usando la app mientras tanto.
-- **Aviso legal**: el usuario solo debe subir contenido que tenga derecho a usar. Los archivos son privados y no se comparten.
+Como la app es personal, no hace falta pagar un servidor en la nube:
 
----
+- Un `docker compose up` en tu PC levanta el servicio. **Con GPU va más rápido, pero no es obligatoria.**
+- La tablet **lo encuentra sola en tu Wi‑Fi** (mDNS). Si quieres usarlo fuera de casa, se puede acceder a través de **Tailscale**.
+- Si el servidor no está disponible, la app usa el **modo rápido en la tablet** para los MP3. Los PDF se quedan en cola hasta que el servidor esté disponible.
 
-## 5. Pantalla de práctica (horizontal)
+### 7.5 Simplificador de canciones (clave para no músicos)
 
-### 5.1 Estética, basada en la imagen de referencia
+Una canción original suele ser demasiado difícil para empezar. La app genera **4 versiones automáticamente**:
 
-- **Fondo negro puro.** En AMOLED así se ahorra batería y se maximiza el contraste.
-- Las **notas son barras redondeadas con brillo de neón** (*bloom*). La longitud de cada barra es su duración.
-- La **etiqueta de la nota** va en un círculo redondeado dentro o encima de la barra (C, D, E… o Do, Re, Mi…).
-- Hay una **línea de impacto luminosa** justo encima del teclado. Cuando una nota la toca, la tecla se ilumina y saltan partículas.
-- **Teclado realista** con sombras suaves. La tecla pulsada se hunde y se colorea.
+| Nivel | Qué toca | Para quién |
+|---|---|---|
+| **1 · Solo melodía** | La melodía principal con la mano derecha, una nota cada vez y ritmo simplificado | Primeros días |
+| **2 · Melodía + bajo** | Lo anterior, más **una nota de bajo por compás** con la izquierda | Cuando la melodía ya sale |
+| **3 · Melodía + acordes** | Melodía + acordes sencillos de 3 notas con la izquierda | Nivel intermedio |
+| **4 · Original** | Todas las notas | Reto final |
 
-### 5.2 Barra superior (se oculta sola)
+Ajustes extra del simplificador:
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ ◄ Biblioteca │ "Nocturno Op.9 nº2"  │ ⏮ ▶ ⏭ │ 🐢 75% 🐇 │ A‑B 🔁 │ ✋I ✋D │ ⚙ │
-│ ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬●────────────────────────────── 1:16 / 4:32  Compás 23 │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-- **Velocidad** del 25 % al 150 % sin cambiar el tono.
-- **Bucle A‑B** por compases, con la opción "repetir N veces y subir la velocidad un 5 %".
-- **Manos**: practicar con la izquierda, con la derecha o con las dos. La mano que no practicas puede sonar sola, sonar bajito o silenciarse.
-- **Modos de reproducción**:
-  - **Espera**: la música se para hasta que tocas la nota correcta. Es el modo ideal para aprender.
-  - **Ritmo**: la música sigue y te puntúa la precisión.
-  - **Escuchar**: la app toca sola y tú miras.
-  - **Libre**: sin canción, solo piano.
-
-### 5.3 Duración en tiempo real
-
-- Las **barras que caen** tienen la longitud exacta de la duración. La velocidad de caída es configurable (zoom temporal).
-- **Mientras mantienes la tecla**, la barra se va "consumiendo" sobre la línea de impacto y la tecla muestra un **indicador de relleno** con el tiempo que falta.
-- Si sueltas antes de tiempo, la parte que falta se queda en **gris** y se marca como "nota corta".
-- Indicador de **pedal de sustain**: una banda horizontal encima del teclado mientras el pedal debe estar pisado.
-- **Metrónomo visual**: líneas tenues de compás y de pulso que cruzan la cascada.
+- **Evitar teclas negras**: transporta la canción a una tonalidad que use solo teclas blancas, si es posible.
+- **Ajustar a mi teclado**: reubica por octavas las notas que se salen del teclado reducido.
+- **Ritmo suave**: alarga o fusiona las notas muy rápidas.
+- **Tempo inicial**: empieza más lento y sube automáticamente cuando aciertas (§17.3).
 
 ---
 
-## 6. Diseños de teclado
+## 8. Sistema de diseño: premium minimalista con luz en las teclas
 
-### 6.1 Teclado completo partido en 2 mitades (modo principal)
+### 8.1 Filosofía visual
 
-Las 88 teclas se dividen en **dos filas exactamente iguales**:
+- **Oscuridad elegante**: casi negro, superficies apenas diferenciadas y mucho espacio vacío.
+- **Una sola fuente de luz**: **las notas y las teclas**. Los botones son discretos, en gris y blanco. Así la atención siempre va a la música.
+- **Materiales**: teclas blancas color **marfil mate** y teclas negras **satinadas**, con sombras suaves. Nada de brillos de plástico.
+- **Movimiento sereno**: transiciones de 180–250 ms con *ease‑out*. Sin rebotes ni efectos llamativos.
+
+### 8.2 Paleta (tokens)
+
+| Token | Valor | Uso |
+|---|---|---|
+| `bg` | `#07070A` | Fondo general (casi negro, evita la estela del AMOLED al desplazar) |
+| `surface-1` | `#111116` | Tarjetas y paneles |
+| `surface-2` | `#1A1A21` | Paneles elevados y hojas inferiores |
+| `line` | `#26262F` | Separadores finos |
+| `text-1` | `#F3F3F6` | Texto principal |
+| `text-2` | `#9C9CA8` | Texto secundario |
+| `key-white` | `#EDEBE5 → #DAD7CF` (degradado vertical) | Teclas blancas marfil |
+| `key-black` | `#18181D → #0E0E12` | Teclas negras satinadas |
+| **`light-right`** | **`#5AB8FF`** (azul hielo) | **Mano derecha**: notas y luz de tecla |
+| **`light-left`** | **`#FFB454`** (ámbar cálido) | **Mano izquierda**: notas y luz de tecla |
+| `ok` | `#3DDC97` | Acierto (destello breve) |
+| `miss` | `#FF6B6B` | Error (solo un parpadeo suave, nunca agresivo) |
+
+> Azul y ámbar son **muy fáciles de distinguir**, también para la mayoría de personas con daltonismo. Así la mano que toca cada nota se entiende sin pensar.
+
+### 8.3 Tipografía
+
+- **Inter** (licencia OFL) para toda la interfaz, con números tabulares en tiempos y marcadores.
+- Letras de las notas en **Inter SemiBold**, dentro de un círculo redondeado como en la imagen de referencia.
+- Escala: 32 / 24 / 18 / 15 / 13 sp. **Mínimo 15 sp** en la pantalla de práctica para leer de un vistazo.
+
+### 8.4 La luz en las teclas (elemento estrella)
+
+| Momento | Efecto |
+|---|---|
+| **Se acerca una nota** (≈ 0,6 s antes) | La tecla empieza a **brillar tenuemente desde dentro** con el color de su mano. Es un pre‑aviso suave. |
+| **Toca pulsarla** | **Tira de luz** en el borde superior de la tecla (como un LED bajo el teclado) y halo sobre la línea de impacto |
+| **La pulsas bien** | La tecla **se llena de luz**, se hunde ligeramente (sombra interior) y salta un destello de partículas finas hacia arriba |
+| **La mantienes** | La luz permanece mientras la barra se consume. Una **línea de relleno** en la tecla indica cuánto falta. |
+| **La sueltas antes de tiempo** | La luz se apaga en gris |
+| **Tecla equivocada** | Parpadeo coral de 120 ms en esa tecla, y la correcta **late** para que la encuentres |
+| **Piano libre** | Cada tecla pulsada se ilumina con una luz blanca cálida, con una pequeña estela |
+
+La **línea de impacto** es una fina franja luminosa sobre el teclado que "respira" muy sutilmente con el pulso de la música, y hace de metrónomo visual.
+
+### 8.5 Componentes
+
+- **Botones**: redondeados (radio de 14 dp), solo icono y texto, y relleno solo para la acción principal.
+- **Iconos**: Material Symbols Rounded, de trazo fino.
+- **Hojas inferiores** (*bottom sheets*) para los ajustes rápidos durante la práctica: se abren sobre la cascada y no te sacan de la canción.
+- **Hápticos** sutiles al confirmar en los menús (no en el teclado, para no distraer).
+
+---
+
+## 9. Ergonomía y distribución de la pantalla de práctica
+
+### 9.1 Reglas de ergonomía
+
+- **Zonas táctiles de al menos 12 × 12 mm** en todo lo que se pulsa durante la práctica.
+- **Los controles van donde están las manos**:
+  - En el modo de 2 filas, los controles principales se colocan en la **banda central** entre las dos filas.
+  - En el modo reducido, se colocan **en las esquinas superiores**, alcanzables con el pulgar si sujetas la tablet.
+- **Mientras tocas, la interfaz se oculta sola** a los 3 s. Basta **un toque en la zona de la cascada** para que vuelva.
+- **Gestos que no interfieren con el teclado**: los gestos solo funcionan en la zona de la cascada, nunca sobre las teclas.
+  - Tocar con dos dedos = pausa.
+  - Deslizar hacia abajo = retroceder 5 s.
+- **Rechazo de palma** activado: apoyar la muñeca no hace sonar notas.
+- **Orientación bloqueada en horizontal.** Si se gira, aparece un aviso amable.
+- **Modo zurdo**: invierte el lado de los controles.
+
+### 9.2 Pantalla de práctica, modo de 2 filas
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  ←   Himno de la alegría · Solo melodía      ▬▬▬▬▬▬▬●──────── 0:42 / 1:30  │ ← barra fina, se oculta
+│                                                                            │
+│                CASCADA AGUDOS (F4–C8)                                      │
+│        ⓔ               ⓖ                                                   │
+│        ▮       ⓓ        ▮                                                  │
+│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│ ← línea de impacto luminosa
+│ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▐                 │   TECLADO F4–C8
+│ F  G  A  B  C₅ ...                                                         │
+├──────────  ⏮   ▶ / ❚❚   🔁 A‑B    🐢 70 %    ✋ Der  ✋ Izq   ⚙  ───────────┤ ← BANDA CENTRAL (controles)
+│                CASCADA GRAVES (A0–E4)                                      │
+│                    ⓒ                                                       │
+│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│
+│ ▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ...           │   TECLADO A0–E4
+│ A  B  C₁ ...                                     C₄• D  E                  │   (• = C central)
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 9.3 Pantalla de práctica, modo reducido (por defecto en las lecciones)
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ←                         Estrellita · Nivel 1                       ⚙  ❚❚ │
+│ ░░░░░░░░░░░░░░░░[▓▓▓▓▓▓▓▓]░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │ ← mini‑mapa de las 88 teclas
+│                                                                            │
+│                 ⓒ                                                          │
+│                 ▮               ⓖ                                          │
+│                 ▮       ⓒ       ▮                                          │
+│                 ▮       ▮       ▮                                          │
+│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│
+│   ▌ █ ▌ █ ▐   ▌ █ ▌ █ ▌ █ ▐   ▌ █ ▌ █ ▐   ▌ █ ▌ █ ▌ █ ▐                     │   2 octavas
+│   C   D   E   F   G   A   B   C•  D   E   F   G   A   B   C                │   teclas de ≈ 21 mm
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 10. Diseños de teclado
+
+### 10.1 Completo en 2 filas (88 teclas)
 
 | Fila | Rango | Teclas | Blancas | Ancho de tecla blanca |
 |---|---|---|---|---|
-| **Superior (agudos)** | **F4 → C8** | 44 | 26 | ≈ 12,1 mm (≈ 114 px) |
-| **Inferior (graves)** | **A0 → E4** | 44 | 26 | ≈ 12,1 mm (≈ 114 px) |
+| **Superior (agudos)** | **F4 → C8** | 44 | 26 | ≈ 12,1 mm |
+| **Inferior (graves)** | **A0 → E4** | 44 | 26 | ≈ 12,1 mm |
 
-Por qué el corte va entre **E4 y F4**:
+- El corte entre **E4 y F4** es el único punto que deja las dos filas **exactamente iguales**. Además, entre E y F no hay tecla negra, así que el corte se ve limpio.
+- **Cada fila tiene su propia cascada**: cada nota cae justo encima de su tecla.
+- La **banda central** contiene los controles (§9.2) y una etiqueta discreta "F4 ▲ ▼ E4".
+- **Configurable**:
+  - Punto de corte.
+  - Modo "solape", que repite una octava en las dos filas.
+  - Orden de las filas.
+  - Proporción entre cascada y teclado, arrastrando la banda.
+- **Uso recomendado**: piano libre y canciones de nivel 3–4.
 
-- Es el único punto que deja **44 teclas y 26 blancas en cada fila**, así que las dos tienen exactamente el mismo tamaño de tecla.
-- **Entre E y F no hay tecla negra**, así que el corte visual es limpio.
-- El Do central (C4) queda en la fila inferior, cerca de su borde derecho, que es donde suele trabajar la mano izquierda que sube.
+### 10.2 Reducido (por defecto para principiantes)
 
-**El punto de corte es configurable** (por ejemplo C4/C#4 o B3/C4). También hay un modo **"solape"**, que repite una octava en las dos filas para pasajes que cruzan el corte.
-
-#### Distribución de la pantalla (2960 × 1848 px)
-
-Cada fila tiene **su propia cascada encima**, así cada nota cae justo sobre la tecla que le corresponde:
-
-```
-┌───────────────────────────────────────────────────────────────┐  ← barra superior (autoocultable, 64 px)
-│                 CASCADA AGUDOS (F4–C8)                        │
-│      ▮           ▮▮                ▮        ▮                 │  ≈ 520 px
-│      ▮    ▮      ▮▮       ▮        ▮                          │
-│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│  ← línea de impacto
-│ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▐ ...  │  ≈ 340 px  TECLADO F4–C8
-├───────────────────────────────────────────────────────────────┤  ← separador (etiqueta "F4 ▲ / ▼ E4")
-│                 CASCADA GRAVES (A0–E4)                        │
-│   ▮▮        ▮             ▮▮           ▮                      │  ≈ 520 px
-│━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━│
-│ ▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ▌█▌█▐ ▌█▌█▌█▐ ...│  ≈ 340 px  TECLADO A0–E4
-└───────────────────────────────────────────────────────────────┘
-```
-
-- La **proporción entre cascada y teclado es ajustable**, arrastrando el separador. También hay presets: *Más cascada* · *Equilibrado* · *Más teclado*.
-- **Orden de las filas configurable**: graves arriba o graves abajo. Por defecto los **graves van abajo**, porque la mano izquierda descansa más cómoda en la parte inferior de la tablet.
-- Opción de **cascada única**: una sola cascada arriba con las dos filas de teclado debajo. Las notas usan dos colores de carril para indicar a qué fila van.
-
-### 6.2 Teclado reducido (ahorro de espacio)
-
-Usa **una sola fila con teclas más grandes**. Tiene varios submodos:
-
-1. **Auto‑rango (recomendado)**: analiza la canción y muestra **solo el rango que usa**, más un margen. Por ejemplo, si va de C3 a G5 muestra unas 3 octavas, con teclas blancas de unos 15 mm.
-2. **Tamaños fijos**: 25 · 37 · 49 · 61 teclas, como los teclados MIDI reales.
-3. **Seguimiento inteligente**: la ventana del teclado **se desliza suavemente** hacia donde vienen las próximas notas, 2 segundos antes de que lleguen.
-4. **Octavas plegables**: las octavas que la canción no usa se **colapsan en una franja fina** con el número de octava, y se pueden expandir tocándolas.
-5. **Gesto de zoom**: pellizcar para cambiar el número de teclas y arrastrar con dos dedos para desplazarse.
-6. **Mini‑mapa**: una franja fina arriba con las 88 teclas y un rectángulo que marca la zona visible. Si una nota cae fuera de la vista, aparece una **flecha en el borde** que avisa hacia dónde ir.
-
-### 6.3 Otros diseños (posteriores)
-
-- **Dos manos independientes**: dos ventanas de teclado reducidas, una por mano, cada una con su propio seguimiento.
-- **Modo estudio**: medio teclado en pantalla y la otra mitad con la partitura en pentagrama.
+- **Auto‑rango**: muestra solo las octavas que usa la canción. En el nivel 1 suelen ser **2 octavas con teclas de ≈ 21 mm**, casi como un piano real.
+- **Seguimiento suave**: si la canción se mueve, el teclado se desliza hacia las próximas notas **antes** de que lleguen, con una animación lenta para no marear.
+- **Tamaños fijos**: 2, 3, 4 o 5 octavas.
+- **Octavas plegables**: las octavas que no se usan quedan como una franja fina.
+- **Pellizcar** para cambiar el número de teclas y **arrastrar con dos dedos** para moverse.
+- **Mini‑mapa** de las 88 teclas arriba. Si una nota cae fuera, aparece una **flecha luminosa en el borde** que avisa hacia dónde ir.
 
 ---
 
-## 7. Ecualización
+## 11. Nombres de las notas: letras C D E F G A B
 
-> "Ecualizar el teclado" puede significar dos cosas, así que el plan cubre las dos: **(A) el sonido** y **(B) la respuesta y el tamaño del teclado**.
-
-### 7.1 Ecualización del sonido
-
-| Ajuste | Opciones |
-|---|---|
-| **Presets de timbre** | Gran Cola de Concierto · Brillante (pop) · Cálido (jazz) · Vintage (vertical) · Íntimo (con sordina) · Eléctrico (estilo Rhodes) |
-| **EQ gráfico de 5 bandas** | 60 Hz · 250 Hz · 1 kHz · 4 kHz · 12 kHz, de ±12 dB |
-| **EQ paramétrico** (avanzado) | 3 bandas con frecuencia, ganancia y Q |
-| **EQ por registro** | Ganancia distinta para graves, medios y agudos del teclado (por zonas de teclas, no por frecuencia) |
-| **Reverb** | Habitación · Estudio · Sala de conciertos · Catedral, con tamaño y mezcla |
-| **Resonancia y realismo** | Resonancia simpática de cuerdas, ruido de macillos y de pedal, *release* |
-| **Afinación** | La4 = 415–466 Hz (440 por defecto) y temperamentos: igual, justo, Werckmeister o mesotónico |
-| **Transposición** | ±12 semitonos (la cascada también se mueve) |
-| **Salida** | Perfil "altavoces de la tablet", que compensa la falta de graves, y perfil "auriculares" (plano) |
-
-### 7.2 Ecualización del teclado (respuesta y tamaño)
-
-| Ajuste | Opciones |
-|---|---|
-| **Curva de velocidad** | Suave · Normal · Dura · Fija (sin dinámica) · Personalizada (curva editable) |
-| **Cómo se calcula la fuerza en pantalla táctil** | Por **área de contacto** del dedo, por **velocidad de bajada** (estimada a partir del tamaño del toque) o fija. Se calibra en el tutorial. |
-| **Sensibilidad por zonas** | Más o menos sensibilidad en graves, medios y agudos |
-| **Tamaño de teclas** | Altura del teclado, proporción entre teclas negras y blancas, y ancho de las negras |
-| **Deslizar entre teclas** | Activado (glissando) o desactivado (evita notas accidentales) |
-| **Rechazo de palma** | Ignora toques grandes o apoyos accidentales |
-| **Pedal virtual** | Botón en pantalla, pedal Bluetooth (pasapáginas) o pedal del piano MIDI |
+- **Sistema único: letras en inglés.**
+  - Teclas blancas: **C D E F G A B**.
+  - Teclas negras: **C# D# F# G# A#**.
+- Por defecto se usa **siempre `#` (sostenido)** en las negras, porque es más fácil para empezar. En *Ajustes* se puede activar "usar ♭ cuando la canción lo pida" (D♭, E♭…).
+- **Dónde aparecen las letras**:
+  - **En las notas que caen**, dentro de un círculo, como en la imagen de referencia.
+  - **En las teclas blancas**, abajo, en gris suave. Se pueden ocultar por niveles: todas, solo las C, o ninguna.
+  - **En las teclas negras**, solo cuando se iluminan, para no saturar.
+- **Orientación**:
+  - Cada **C** lleva su número de octava pequeño (C3, C4, C5…).
+  - El **C central (C4)** tiene un punto de luz fijo. Es la "casa" del principiante.
+- **Ayuda para memorizar**: en las primeras lecciones, las letras se apoyan en la forma de las teclas negras ("C está justo a la izquierda del grupo de 2 negras").
 
 ---
 
-## 8. Modos de señalización
+## 12. Modos de señalización
 
-Se pueden combinar libremente. También hay **presets** para no tener que configurarlo todo:
+Se combinan libremente y hay **presets** pensados para el progreso de un principiante:
 
-| Preset | Combinación |
-|---|---|
-| **Principiante** | Cascada + nombres de nota + teclas iluminadas + digitación + modo Espera |
-| **Intermedio** | Cascada + colores por mano + teclas iluminadas, sin nombres |
-| **Lector** | Partitura que se desplaza + iluminación mínima |
-| **Reto** | Cascada sin etiquetas y sin iluminar teclas |
+| Preset | Qué muestra | Cuándo |
+|---|---|---|
+| **Guiado** (por defecto) | Cascada + letras en notas y teclas + luz con pre‑aviso + números de dedo + modo Espera | Primeras semanas |
+| **Confianza** | Cascada + letras solo en las notas + luz al tocar | Cuando ya conoces el teclado |
+| **Memoria** | Cascada sin letras + luz solo si fallas | Para comprobar que te la sabes |
+| **Lectura** (opcional) | Pentagrama que se desplaza con letras de ayuda + luz mínima | Si quieres aprender a leer partitura |
 
-### 8.1 Elementos de señalización
+### 12.1 Elementos disponibles
 
-1. **Cascada (notas que caen)**: el modo de la imagen de referencia.
-2. **Teclas iluminadas**: la tecla se enciende con el color de la nota cuando toca pulsarla.
-3. **Pre‑aviso**: la tecla empieza a brillar tenuemente un momento antes (configurable entre 0 y 1 s).
-4. **Etiquetas de nota**: inglés (C D E) · latino (Do Re Mi) · números MIDI · solfeo móvil (relativo a la tonalidad) · ninguna. Se pueden poner **en la barra, en la tecla o en ambas**.
-5. **Digitación**: números del 1 al 5 en la barra. Salen del MusicXML o se calculan con un algoritmo automático.
-6. **Partitura que se desplaza**: pentagrama (Verovio) arriba, con un cursor sincronizado.
-7. **Carriles tipo "Guitar Hero"**: guías verticales tenues que ayudan a seguir cada nota hasta su tecla.
-8. **Flechas fuera de pantalla** en el teclado reducido.
-9. **Feedback de acierto**: verde si es correcta y a tiempo, amarillo si es correcta pero adelantada o retrasada (en ms), rojo si la nota es incorrecta, gris si la soltaste antes de tiempo.
+1. **Cascada**: barras de luz cuya longitud es la duración.
+2. **Luz en las teclas**: pre‑aviso, al tocar, al mantener y en caso de error (§8.4).
+3. **Letras**: en las notas, en las teclas o en ambas (§11).
+4. **Números de dedo** del 1 al 5, dentro de la barra. Salen de la partitura o se calculan automáticamente.
+5. **Guías verticales tenues** desde cada nota hasta su tecla, para no perderse.
+6. **Flechas de borde** en el teclado reducido.
+7. **Feedback de acierto**: destello verde si es a tiempo, ámbar si es un poco pronto o tarde, coral si la nota es incorrecta y gris si se suelta antes de tiempo.
+8. **Pentagrama** opcional (Verovio), con cursor sincronizado.
 
-### 8.2 Esquemas de color de las notas
+### 12.2 Esquemas de color de las notas
 
 | Esquema | Descripción |
 |---|---|
-| **Por mano** (por defecto) | Derecha **azul neón** · izquierda **verde/cian**. Es el estilo de la referencia. |
-| **Por nota (cromático)** | Un color por cada una de las 12 notas, en círculo cromático (Do rojo → Si violeta) |
-| **Por octava** | El tono varía según la altura: graves cálidos, agudos fríos |
-| **Por duración** | Las notas cortas son claras y las largas saturadas |
-| **Por dedo** | Un color por cada dedo del 1 al 5 |
-| **Por dinámica** | La intensidad o el brillo según la velocidad (p, mf o f) |
-| **Monocromo** | Un solo color, para lectores avanzados |
-| **Daltonismo** | Paletas seguras para protanopía, deuteranopía y tritanopía, con patrones o texturas además del color |
-
-Temas de fondo: **Neón** (el de la referencia) · Clásico (madera y marfil) · Minimal claro · Alto contraste.
+| **Por mano** (por defecto) | Derecha azul hielo · izquierda ámbar |
+| **Por nota** | Un color para cada letra (C, D, E…). Ayuda a memorizar. |
+| **Por dedo** | Un color por dedo del 1 al 5 |
+| **Por octava** | Graves cálidos, agudos fríos |
+| **Monocromo** | Un único tono de luz blanca. Muy elegante. |
+| **Daltonismo** | Paletas seguras, más formas o texturas en las barras |
 
 ---
 
-## 9. Entrada: cómo sabe la app lo que tocas
+## 13. Ecualizador de sonido
 
-| Fuente | Latencia | Polifonía | Notas |
-|---|---|---|---|
-| **Teclado táctil en pantalla** | ~10–20 ms | 10 dedos | Siempre disponible |
-| **Piano MIDI por USB‑C / BLE** | ~5–10 ms | Total | Lo mejor para practicar en serio. Se detecta automáticamente al conectarlo. |
-| **Micrófono (piano acústico)** | ~60–120 ms | Buena para 3–4 notas a la vez | Basic Pitch en TFLite. El evaluador compensa la latencia. Hay calibración de ruido ambiente. |
+Está pensado para que **cualquiera lo use sin saber de audio**, con una capa avanzada para quien quiera más.
 
-**Evaluador**: compara cada nota esperada con lo que se ha tocado dentro de una ventana de tolerancia (±80 ms en *Fácil*, ±50 ms en *Normal* y ±30 ms en *Experto*). Mide nota correcta, adelanto o retraso, duración mantenida y dinámica.
+### 13.1 Capa sencilla (la que se ve primero)
 
----
+- **Selector de piano**, con tarjetas grandes y sonido de muestra al tocarlas:
+  - Gran Cola · Brillante · Cálido · Vertical · Íntimo (suave, para tocar de noche) · Eléctrico.
+- **Tres deslizadores** con nombres humanos: **Graves · Cuerpo · Brillo**.
+- **Sala**: Seca · Habitación · Estudio · Auditorio · Catedral, con un deslizador de "cantidad de sala".
+- **Volumen** y modo **"Noche"** (comprime el sonido para tocar bajito sin perder notas suaves).
 
-## 10. Tutorial de inicio guiado
+### 13.2 Capa avanzada (desplegable)
 
-Es un **tutorial interactivo**: el usuario aprende tocando, no leyendo. Se puede **saltar y retomar**, y la app **recuerda el paso** en el que se quedó.
-
-### 10.1 Flujo de onboarding (primera vez, unos 5 minutos)
-
-| Paso | Pantalla | Qué hace el usuario | Objetivo |
-|---|---|---|---|
-| 1 | **Bienvenida** | Ve una animación corta de la cascada tocando una melodía conocida de dominio público | Que entienda en 10 s qué hace la app |
-| 2 | **Tu nivel** | Elige: *Nunca he tocado* · *Sé algo* · *Leo partituras* | Configura los presets de señalización y la dificultad |
-| 3 | **¿Cómo vas a tocar?** | Elige: *En la pantalla* · *Con piano MIDI* (prueba de conexión) · *Con piano acústico* (permiso de micrófono y prueba) | Configura la entrada |
-| 4 | **Postura y orientación** | Ilustración de cómo colocar la tablet en horizontal sobre una mesa o un atril | Ergonomía |
-| 5 | **Elige tu teclado** | Previsualización en vivo de *Completo en 2 filas* frente a *Reducido*, para tocar y comparar | Que elija el diseño |
-| 6 | **Calibra tu toque** | "Toca suave… ahora fuerte" (5 pulsaciones de cada) | Ajusta la curva de velocidad (§7.2) |
-| 7 | **Leer la cascada** | Caen 3 notas lentas, la app resalta "esta es la barra", "esta es la línea", "pulsa cuando llegue" y espera | Que entienda la mecánica básica |
-| 8 | **Duración** | Una nota larga: "mantén pulsado hasta que la barra se acabe" | Que entienda la duración |
-| 9 | **Tu primera canción** | Toca *Himno de la alegría* (dominio público) en modo Espera, con la derecha | Primer logro 🎉 |
-| 10 | **Importa la tuya** | Guía de "+ Añadir canción" con un MIDI de ejemplo incluido | Que conozca la función estrella |
-| 11 | **Mini tour de controles** | Marcas sobre los controles: velocidad, bucle A‑B, manos y ajustes | Que conozca el resto de herramientas |
-
-### 10.2 Ayuda contextual posterior
-
-- **Marcas contextuales** (*coach marks*) la primera vez que el usuario entra en cada pantalla, por ejemplo la primera vez que abre el ecualizador.
-- **"¿Sabías que…?"**: consejos breves en las pantallas de carga.
-- **Centro de ayuda** con vídeos cortos de 30 s por función.
-- **Botón "Repetir tutorial"** en Ajustes.
-
-### 10.3 Academia (fase posterior)
-
-Lecciones progresivas: notas blancas → negras → ritmo → acordes → manos juntas → lectura de pentagrama. Cada lección es un `Song` con objetivos ("3 veces seguidas con más del 90 %").
+- **EQ gráfico de 5 bandas**: 60 Hz · 250 Hz · 1 kHz · 4 kHz · 12 kHz, de ±12 dB, con curva visual.
+- **EQ paramétrico** de 3 bandas: frecuencia, ganancia y Q.
+- **EQ por zona del teclado**: subir o bajar el volumen de graves, centro y agudos del piano (por teclas, no por frecuencia).
+- **Realismo**: resonancia de cuerdas, ruido de macillos, ruido de pedal y duración de la liberación.
+- **Afinación**: La4 entre 415 y 466 Hz. **Transposición** de ±12 semitonos (la cascada se mueve con ella).
+- **Perfiles de salida**: Altavoces de la tablet / Auriculares, que se cambian automáticamente.
+- **Guardar mis presets** con nombre.
 
 ---
 
-## 11. Otras pantallas
+## 14. Ecualizador de teclado
 
-- **Inicio / Biblioteca**: cuadrícula de canciones con portada, dificultad estimada (★), duración y progreso (%). Filtros: importadas · favoritas · en progreso · lecciones.
-- **Detalle de canción**: vista previa, elección de pista o mano, dificultad, mejor puntuación e historial.
-- **Estadísticas**: minutos practicados al día, racha de días, precisión por canción y compases problemáticos (mapa de calor sobre la partitura).
-- **Ajustes**: Sonido (EQ) · Teclado · Señalización · Entrada (MIDI/micrófono) · Tutorial · Cuenta y sincronización · Accesibilidad.
-- **Editor simple** (fase 3): corregir notas, cambiar la mano o el dedo, y anotar con el **S Pen**.
+Ajusta **cómo responde y cómo se ve** el teclado. Se edita **sobre el propio teclado**, con capas de color que muestran cada zona.
+
+### 14.1 Respuesta al toque
+
+| Ajuste | Opciones |
+|---|---|
+| **Curva de fuerza** | Suave · Normal · Dura · Fija (todas las notas igual de fuertes) · Personalizada (curva arrastrable) |
+| **Cómo detecta la fuerza en la pantalla** | Por el **tamaño del contacto** del dedo (más superficie = más fuerte), con una calibración inicial (§16, paso 6) |
+| **Sensibilidad por zonas** | Arrastras sobre el teclado para definir zonas (graves, centro y agudos) y les das más o menos sensibilidad |
+| **Equilibrio de manos** | Subir o bajar el volumen de lo que toca cada mano (útil cuando una mano tapa a la otra) |
+
+### 14.2 Forma y comportamiento
+
+| Ajuste | Opciones |
+|---|---|
+| **Altura del teclado** | Deslizador con vista en vivo |
+| **Proporción de las teclas negras** | Largo y ancho de las negras (más grandes = más fáciles de acertar) |
+| **Deslizar entre teclas** | Activado (glissando) o desactivado (evita notas accidentales). **Desactivado por defecto.** |
+| **Rechazo de palma** | Activado, con nivel ajustable |
+| **Pedal** | Botón en pantalla, pedal Bluetooth (pasapáginas) o pedal MIDI |
 
 ---
 
-## 12. Rendimiento y latencia (presupuestos)
+## 15. Entrada: cómo sabe la app lo que tocas
 
-| Métrica | Objetivo | Cómo se consigue |
+| Fuente | Latencia | Comentario |
 |---|---|---|
-| Del toque al sonido (pantalla) | **< 25 ms** | Oboe en modo MMAP exclusivo, buffer de 2 bursts, la entrada táctil va directa al hilo de audio por una cola *lock‑free* |
-| De MIDI al sonido | **< 12 ms** | Callback de MIDI → cola → hilo de audio |
-| Frames de la cascada | **120 fps estables** (p99 < 8,3 ms) | Instancing en GL: un *draw call* para todas las notas, y *bloom* a media resolución |
-| Arranque en frío | < 1,5 s | Las muestras se cargan en diferido: primero la capa media y el resto en segundo plano |
-| Memoria | < 800 MB | Muestras en 16 bits y *streaming* desde disco para las capas poco usadas |
-| Sincronía entre audio y vídeo | < 5 ms de deriva | El reloj maestro es la **posición de audio** (`AAudioStream_getTimestamp`), no el reloj del sistema |
-| Batería | ≥ 4 h de práctica continua | Fondo negro en AMOLED y bajar a 60 Hz cuando está en pausa |
+| **Pantalla táctil** | ~15–25 ms | Siempre disponible. Es la entrada principal. |
+| **Piano MIDI USB/BLE** (opcional) | ~5–10 ms | Se detecta solo al conectarlo |
+| **Micrófono con piano acústico** (fase posterior) | ~60–120 ms | Basic Pitch en la tablet, con compensación de la latencia |
+
+El **evaluador** acepta un margen generoso para principiantes:
+
+| Nivel | Margen de tiempo |
+|---|---|
+| Relajado (por defecto) | ±120 ms |
+| Normal | ±70 ms |
+| Preciso | ±40 ms |
 
 ---
 
-## 13. Accesibilidad
+## 16. Tutorial de inicio guiado (≈ 5 minutos)
 
-- Paletas para daltonismo (§8.2) y patrones además del color.
-- Tamaño de texto y etiquetas escalable.
-- Modo zurdo: invierte el orden de las filas y el lado de los controles.
-- TalkBack en todos los menús. La cascada no se lee en voz, pero sí hay "notas habladas" opcionales.
-- Reducción de movimiento: sin partículas ni *bloom*.
+Es **interactivo**: se aprende tocando. Se puede saltar, se retoma donde lo dejaste y se repite desde *Ajustes*.
+
+| Paso | Pantalla | Qué haces | Objetivo |
+|---|---|---|---|
+| 1 | **Bienvenida** | Ves notas de luz caer y sonar una melodía conocida | Entender la app en 10 s |
+| 2 | **Coloca la tablet** | Animación: en horizontal, sobre una mesa o un atril, a la altura de los codos | Ergonomía |
+| 3 | **Tu primera tecla** | "Toca cualquier tecla", y la tecla se ilumina y suena | Primer contacto y primera alegría |
+| 4 | **El mapa del teclado** | Descubres los grupos de 2 y 3 teclas negras y encuentras **C** a la izquierda del grupo de 2 | Orientarse sin saber música |
+| 5 | **Las letras** | Tocas C‑D‑E‑F‑G y cada letra aparece al pulsarla | Aprender los nombres |
+| 6 | **Calibra tu toque** | "Toca suave… ahora fuerte" | Ajustar el ecualizador de teclado |
+| 7 | **Leer la cascada** | Caen 3 notas lentas, y la app espera a que toques cada una al llegar a la línea | Entender la mecánica |
+| 8 | **Notas largas** | "Mantén pulsado hasta que la barra se acabe" | Entender la duración |
+| 9 | **Tus dedos** | Mano en pantalla con números del 1 al 5 y pulgar derecho en el C central | Posición básica |
+| 10 | **Tu primera canción** | *Himno de la alegría* (nivel 1, mano derecha, modo Espera) | **Primer logro 🎉** |
+| 11 | **Elige tu teclado** | Comparas en vivo *Reducido* y *Completo en 2 filas* | Que conozcas los dos |
+| 12 | **Tus canciones** | Importas el MIDI de ejemplo incluido y ves cómo se simplifica | Conocer la función estrella |
+| 13 | **Mini tour** | Marcas breves sobre velocidad, bucle, manos y los dos ecualizadores | Conocer el resto de herramientas |
+
+**Después**: ayudas contextuales la primera vez que entras en cada pantalla, consejos breves en las cargas y vídeos de 30 s en *Ayuda*.
 
 ---
 
-## 14. Estructura del proyecto (código)
+## 17. Aprender desde cero: "Tu camino"
+
+### 17.1 Camino de lecciones
+
+Son lecciones de **2 a 5 minutos**, cada una con tres partes:
+
+1. **Una idea**: una animación y una frase.
+2. **Práctica guiada**.
+3. **Mini‑reto**, que da estrellas.
+
+| Módulo | Contenido (sin jerga) |
+|---|---|
+| **1. Conoce el teclado** | Grupos de negras, encontrar C, las 7 letras, qué es "más agudo y más grave", las octavas |
+| **2. Tus manos** | Números de dedo, posición de C, relajar la muñeca |
+| **3. Largo y corto** | Notas largas y cortas con la cascada, contar pulsos con la luz de la línea de impacto |
+| **4. Melodías con 5 notas** | Canciones sencillas con C‑D‑E‑F‑G y la mano derecha |
+| **5. La mano izquierda** | Las mismas ideas con la izquierda (notas ámbar) |
+| **6. Las teclas negras** | Qué es `#`: "la tecla negra justo a la derecha" |
+| **7. Dos manos** | Melodía con la derecha y una nota larga con la izquierda |
+| **8. Acordes fáciles** | C, F, G y Am como "formas" de 3 dedos, para acompañar canciones populares |
+| **9. Moverse por el teclado** | Cambiar de posición sin perderse |
+
+**Canciones incluidas** (dominio público): Himno de la alegría, Estrellita (*Twinkle Twinkle*), Cumpleaños feliz, Jingle Bells, Oh When the Saints, Minueto en G, Para Elisa (inicio), Canon de Pachelbel (simplificado)…
+
+### 17.2 Modos de práctica
+
+- **Espera** (por defecto): la música se para hasta que tocas la nota correcta.
+- **Ritmo**: la música sigue y tú la acompañas.
+- **Escuchar**: la app toca sola y tú miras las luces.
+- **Por manos**: solo la derecha, solo la izquierda o las dos. La otra mano puede sonar sola, sonar bajito o silenciarse.
+- **Bucle**: tocas dos puntos de la barra de progreso para repetir un trozo.
+
+### 17.3 El coach (feedback amable)
+
+- Al terminar: **"¡9 de 10 notas! 🎉"**, con las 1–2 cosas a mejorar en lenguaje humano: "En esta parte te adelantas un poco".
+- **Detección de trozos difíciles**: "Este trozo te cuesta. ¿Lo repetimos más despacio?", y prepara el bucle a un toque.
+- **Tempo adaptativo**: empieza al 60 % y sube un 5 % cada vez que superas el 90 % de aciertos.
+- **Subida de nivel**: cuando dominas el nivel 1 de una canción, te propone el nivel 2.
+- **Motivación tranquila**: minutos practicados, días seguidos y canciones aprendidas, sin presión ni castigos por perder la racha.
+
+---
+
+## 18. Pantallas principales
+
+### 18.1 Inicio
+
+Como máximo cuatro opciones, todas grandes:
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  Buenas tardes                                        🔥 4 días   ⚙        │
+│                                                                            │
+│  ┌──────────────────────────────────────┐  ┌───────────────────────────┐   │
+│  │  CONTINUAR                           │  │  TU CAMINO                │   │
+│  │  Himno de la alegría · Nivel 2       │  │  Módulo 4 · Lección 2     │   │
+│  │  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬░░░░░  72 %   ▶      │  │  ●●●●○○○○○                │   │
+│  └──────────────────────────────────────┘  └───────────────────────────┘   │
+│  ┌──────────────────────────────────────┐  ┌───────────────────────────┐   │
+│  │  MIS CANCIONES          + Añadir     │  │  PIANO LIBRE              │   │
+│  │  ▢ ▢ ▢ ▢                             │  │  Toca sin partitura       │   │
+│  └──────────────────────────────────────┘  └───────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 18.2 Resto de pantallas
+
+- **Mis canciones**: cuadrícula con portada, nivel actual, estrellas y progreso. Filtros: *En progreso*, *Favoritas* y *Añadidas*.
+- **Detalle de canción**: escuchar la vista previa, elegir nivel y mano, y empezar.
+- **Progreso**: calendario de práctica, canciones aprendidas y trozos que más te cuestan.
+- **Ajustes**: Sonido (ecualizador de sonido) · Teclado (ecualizador de teclado) · Señalización · Entrada · Servidor en casa · Tutorial · Copia de seguridad · Accesibilidad.
+
+---
+
+## 19. Accesibilidad
+
+- Paletas para daltonismo y formas además del color.
+- Texto escalable.
+- Modo zurdo.
+- *Reducir movimiento*: sin partículas y con transiciones simples.
+- Contraste alto opcional en las letras de las teclas.
+
+---
+
+## 20. Uso personal: qué cambia
+
+- **Sin cuentas, sin login, sin anuncios, sin analíticas.** Todo se queda en la tablet.
+- **Instalación directa**: APK compilado con Android Studio o con GitHub Actions, e instalado por cable o por enlace. No hace falta pasar por Google Play.
+- **Actualizaciones**: nueva versión del APK. Los datos se conservan.
+- **Copia de seguridad**: exportar e importar un archivo `.zip` (canciones, progreso y ajustes) a Google Drive o a tu PC.
+- **Licencias**: para uso privado y sin distribuir, se pueden usar sin problema componentes con licencias exigentes (por ejemplo Audiveris, AGPL) y cualquier canción tuya. Si algún día se publica, habría que revisarlas (queda anotado en §24).
+- **Nada de monetización.** Todas las funciones están desbloqueadas.
+
+---
+
+## 21. Estructura del proyecto
 
 ```
 piano-cascada/
-├── app/                      # Módulo Android principal (Compose, navegación)
+├── app/                      # Módulo principal (Compose, navegación, tema)
+├── designsystem/             # Tokens (§8.2), tipografía, componentes, iconos
 ├── core/
-│   ├── model/                # Song, Track, Note… (Kotlin puro)
-│   ├── importers/            # MIDI, MusicXML, cliente de la API de backend
-│   ├── transport/            # Reloj, bucle, modo Espera
-│   ├── evaluator/            # Puntuación y feedback
-│   └── data/                 # Room, DataStore, repositorios
+│   ├── model/                # Song, Track, Note…
+│   ├── importers/            # MIDI, MusicXML, cliente del servidor en casa
+│   ├── simplifier/           # Generación de los niveles 1–4 (§7.5)
+│   ├── transport/            # Reloj, modo Espera, bucle, tempo adaptativo
+│   ├── evaluator/            # Aciertos + coach
+│   └── data/                 # Room, DataStore, copia de seguridad
 ├── feature/
+│   ├── home/
 │   ├── library/
-│   ├── practice/             # Pantalla de práctica (contenedor Compose + GL)
-│   ├── settings/
-│   ├── onboarding/           # Tutorial guiado
-│   └── stats/
-├── render/                   # Motor OpenGL: cascada, teclado, partículas, bloom
-├── audio/                    # C++: Oboe, sampler SFZ, EQ biquad, reverb (JNI)
-├── input/                    # Táctil, MIDI, micrófono + TFLite
+│   ├── practice/             # Pantalla de práctica (Compose + GL)
+│   ├── journey/              # Tu camino (lecciones)
+│   ├── onboarding/           # Tutorial inicial
+│   ├── settings/             # Incluye los dos ecualizadores
+│   └── progress/
+├── render/                   # OpenGL: cascada, teclado, luz, partículas
+├── audio/                    # C++: Oboe, sampler SFZ, EQ, convolución, limitador
+├── input/                    # Táctil (fuerza, palma), MIDI, micrófono
 ├── assets/
-│   ├── samples/              # Salamander Grand (SFZ)
-│   ├── songs/                # Canciones de dominio público para el tutorial
+│   ├── samples/              # Salamander Grand V3 + alternativos
+│   ├── impulses/             # Respuestas de impulso de salas
+│   ├── songs/                # Canciones de lecciones (dominio público)
 │   └── models/               # basic_pitch.tflite
-└── backend/
-    ├── api/                  # FastAPI
-    ├── workers/              # Transcripción de audio, OMR, separación de manos
-    └── docker/               # Imágenes con GPU
+└── home-server/              # Docker: FastAPI + transcripción + Audiveris
 ```
 
 ---
 
-## 15. Hoja de ruta
+## 22. Hoja de ruta (proyecto personal)
 
-| Fase | Duración aprox. | Entregable |
+| Fase | Duración aprox.* | Entregable |
 |---|---|---|
-| **0. Prototipos técnicos** | 2 semanas | (a) Latencia real con Oboe en la S8 Ultra, (b) cascada GL a 120 fps con 2000 notas, (c) prueba de modelos de transcripción con 20 MP3 de piano |
-| **1. MVP** | 6–8 semanas | Piano libre · importar **MIDI y MusicXML** · cascada con colores por mano y duración · **teclado de 2 filas** · modo Espera y Ritmo · velocidad y bucle A‑B · presets de sonido básicos · tutorial pasos 1–9 |
-| **2. Audio y partituras** | 6 semanas | Backend con **MP3 → notas** y **PDF/foto → notas** · separación de manos · revisión antes de guardar · notificaciones |
-| **3. Personalización completa** | 4–5 semanas | **Teclado reducido** (auto‑rango, seguimiento, plegado y mini‑mapa) · **EQ completo** de sonido y de teclado · todos los **modos de señalización** y esquemas de color · partitura que se desplaza |
-| **4. Entradas avanzadas** | 3–4 semanas | Piano MIDI por USB/BLE · micrófono con Basic Pitch · calibración de latencia |
-| **5. Pulido y lanzamiento** | 4 semanas | Estadísticas · Academia (10 lecciones) · editor con S Pen · accesibilidad · beta cerrada · Galaxy Store y Google Play |
+| **0. Prototipos** | 1–2 semanas | Latencia real con Oboe y Salamander en la S8 Ultra · cascada GL a 120 fps · prueba del diseño de luz en las teclas |
+| **1. Base tocable** | 4–5 semanas | Piano libre con buen sonido · **sistema de diseño** · teclado **reducido** y de **2 filas** · luz en las teclas · letras C‑D‑E |
+| **2. Practicar canciones** | 4 semanas | Importar MIDI y MusicXML · cascada con duración · modos Espera, Ritmo y Escuchar · manos · bucle · velocidad · **simplificador niveles 1–4** |
+| **3. Primeros pasos** | 4 semanas | **Tutorial de inicio** completo · **Tu camino** módulos 1–5 · coach y tempo adaptativo · pantalla de inicio y progreso |
+| **4. Los dos ecualizadores** | 2–3 semanas | **Ecualizador de sonido** (capa sencilla y avanzada, reverb por convolución) · **ecualizador de teclado** (curva, zonas, forma) · presets de señalización |
+| **5. MP3 y PDF** | 3–4 semanas | MP3 en la tablet (Basic Pitch) · **servidor en casa** (MP3 de alta calidad + PDF) |
+| **6. Pulido** | 2–3 semanas | Tu camino módulos 6–9 · accesibilidad · copia de seguridad · micrófono (opcional) |
 
-**Total estimado: unos 6–7 meses** con un equipo pequeño: 2 Android/Kotlin, 1 C++/audio a media jornada, 1 ML/backend, 1 diseñador UX/UI y apoyo de QA.
-
-### 15.1 Alcance del MVP (qué entra y qué no)
-
-- ✅ MIDI y MusicXML, cascada, teclado de 2 filas, modos Espera y Ritmo, tutorial básico y 3 presets de sonido.
-- ❌ MP3, PDF, micrófono, teclado reducido, Academia y nube. Todo eso llega en las fases 2–5.
+\* Estimación para **una persona desarrollando con ayuda de IA**. Total: **unos 5–6 meses** a ritmo constante. Cada fase termina con algo **usable en la tablet**.
 
 ---
 
-## 16. Pruebas y calidad
+## 23. Pruebas y calidad
 
-- **Unitarias**: parsers (MIDI y MusicXML, con un corpus de más de 200 archivos), evaluador y mapa de tempo.
-- **Rendimiento**: Macrobenchmark y JankStats en una S8 Ultra real. Fallo si p99 > 8,3 ms.
-- **Latencia**: medición con micrófono externo y la app *OboeTester* (del toque al sonido).
-- **Transcripción**: métricas F1 de onset y offset con el dataset **MAESTRO**. Objetivo: F1 de notas > 0,9 en piano solo.
-- **OMR**: un conjunto de 50 PDF de prueba con su MusicXML de referencia.
-- **Usabilidad**: 8–10 personas de distintos niveles hacen el tutorial sin ayuda. Objetivo: más del 80 % termina la primera canción.
-
----
-
-## 17. Riesgos y mitigaciones
-
-| Riesgo | Impacto | Mitigación |
-|---|---|---|
-| La transcripción de MP3 es imprecisa en canciones con banda o voz | Alto | Separar fuentes con Demucs, dejar revisar y editar al usuario y avisar de que "funciona mejor con piano solo" |
-| OMR con errores en PDF escaneados | Medio | Mostrar el original al lado, editor de corrección y priorizar MusicXML y MIDI |
-| Latencia de audio por Bluetooth (más de 150 ms) | Medio | Detectar la salida BT, avisar y ofrecer compensación visual (adelantar la cascada) |
-| Teclas de 12 mm pequeñas para manos grandes | Medio | Teclado reducido, solape configurable y zoom |
-| Licencias (AGPL de Audiveris, modelos, muestras) | Medio | Revisión legal en la fase 0 y preferir componentes Apache, MIT o CC‑BY |
-| Derechos de autor de lo que suben los usuarios | Medio | Uso privado, sin compartir públicamente, con términos de uso claros |
-| Coste de GPU del backend | Medio | Colas, caché por *hash* del archivo, modo sin conexión con Basic Pitch y límites en el plan gratuito |
+- **Sonido**: comparación A/B con un piano real o una grabación de referencia. Medir la latencia del toque al sonido con *OboeTester*.
+- **Fluidez**: JankStats y Macrobenchmark en la S8 Ultra. Fallo si el p99 supera 8,3 ms.
+- **Parsers**: un corpus de más de 100 MIDI y MusicXML.
+- **Simplificador**: comprobar a oído que el nivel 1 de 20 canciones es reconocible y fácil de tocar.
+- **Transcripción**: medida con canciones de piano solo (dataset MAESTRO como referencia).
+- **UX con principiantes reales**: 3–5 personas sin conocimientos musicales hacen el tutorial sin ayuda. Objetivo: todas terminan la primera canción y entienden las letras.
 
 ---
 
-## 18. Modelo de negocio (propuesta)
+## 24. Riesgos
 
-- **Gratis**: piano libre, MIDI y MusicXML ilimitados, 3 importaciones de MP3 o PDF al mes y presets básicos.
-- **Premium** (suscripción o pago único): importaciones ilimitadas, todos los sonidos y el EQ completo, Academia, estadísticas avanzadas y sincronización en la nube.
+| Riesgo | Mitigación |
+|---|---|
+| La transcripción de MP3 con banda o voz es imprecisa | Separación con Demucs + simplificador (el nivel 1 solo necesita la melodía) + revisar notas + recomendar MIDI cuando exista |
+| Lectura de PDF con errores | Mostrar el original al lado y priorizar MIDI y MusicXML |
+| Latencia de auriculares Bluetooth | Aviso + recomendar los altavoces o USB‑C + compensación visual |
+| Teclas de 12 mm en el modo de 2 filas | El teclado reducido es el modo por defecto para aprender |
+| Memoria con muestras grandes | Precarga parcial y streaming (§4.1) |
+| Cansancio o abandono del principiante | Lecciones cortas, simplificador, coach amable y éxito en 5 minutos |
+| Licencias si algún día se publica | Revisar Audiveris (AGPL), las muestras y los modelos antes de distribuir |
 
 ---
 
-## 19. Próximos pasos inmediatos
+## 25. Próximos pasos
 
-1. Validar con el cliente cómo entiende **"ecualizar el teclado"** (sonido, respuesta o ambas). El §7 cubre las dos interpretaciones.
-2. Hacer los **3 prototipos técnicos de la fase 0** en una Galaxy Tab S8 Ultra real.
-3. Diseñar en Figma la **pantalla de práctica** (las dos filas y la reducida) y el **flujo del tutorial**.
-4. Revisar las licencias: Salamander, Verovio, Audiveris u oemer y los modelos de transcripción.
-5. Arrancar el MVP (fase 1).
+1. **Prototipo de sonido**: Oboe + Salamander V3 en la S8 Ultra, midiendo la latencia.
+2. **Prototipo visual**: cascada + teclado con **luz en las teclas** a 120 fps, para validar la estética premium minimalista.
+3. **Diseño en Figma** de Inicio, Práctica (reducido y 2 filas), los dos ecualizadores y el tutorial.
+4. Arrancar la **fase 1**.
