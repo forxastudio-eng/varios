@@ -5,6 +5,7 @@ import os, subprocess, sys, tempfile, time, json, shutil
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from music21 import corpus
 import conversion, omr
+import metricas
 
 PIEZAS = ["bach/bwv846", "mozart/k545/movement1_exposition", "verdi/laDonnaEMobile", "schubert/Lindenbaum", "bach/bwv66.6", "bach/bwv269",
           "bach/bwv140.7", "bach/bwv80.8", "bach/bwv1.6", "bach/bwv244.54"]
@@ -77,21 +78,20 @@ for nombre in PIEZAS:
         dt = time.time() - t0
         ver = [(n[0], n[2]) for n in verdad["mdNotas"] + verdad["miNotas"]]
         est = [(n[0], n[2]) for n in leido["mdNotas"] + leido["miNotas"]]
+        m = metricas.comparar(ver, est)
         diagnostico(nombre, verdad, leido)
-        p, r, f = f1(est, ver)
-        ver_r = [(n[0], n[2]) for n in verdad["mdNotas"]]; est_r = [(n[0], n[2]) for n in leido["mdNotas"]]
-        _, _, fr = f1(est_r, ver_r)
-        filas.append((nombre, "ok", len(ver), p, r, f, dt, leido["compases"], verdad["compases"], leido["compas"] == verdad["compas"]))
+        filas.append((nombre, "ok", len(ver), m["contenido"], m["ritmo"], m["estricta"], dt, leido["compases"], verdad["compases"], leido["compas"] == verdad["compas"]))
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
-print("\n%-36s %6s %6s %6s %6s %7s  compases  compás" % ("pieza", "notas", "P", "R", "F1", "tiempo"))
+print("\n%-36s %6s %9s %7s %9s %7s  compases" % ("pieza", "notas", "contenido", "ritmo", "estricta", "tiempo"))
 tot = []
 for f in filas:
     if f[1] != "ok":
         print("%-36s %s" % (f[0], f[1])); continue
-    print("%-36s %6d %6.3f %6.3f %6.3f %6.0fs  %3d/%3d   %s" % (f[0], f[2], f[3], f[4], f[5], f[6], f[7], f[8], "ok" if f[9] else "distinto"))
-    tot.append(f[5])
+    print("%-36s %6d %9.3f %7.3f %9.3f %6.0fs   %3d/%3d" % (f[0], f[2], f[3], f[4], f[5], f[6], f[7], f[8]))
+    tot.append(f[3:6])
 if tot:
-    print("\nF1 medio de notas (pitch + posición ±0,06 pulsos): %.3f sobre %d piezas" % (sum(tot) / len(tot), len(tot)))
+    n = len(tot)
+    print("\nMEDIA sobre %d piezas · contenido (notas correctas y en orden): %.3f · ritmo: %.3f · estricta (nota por nota en el mismo instante): %.3f" % (n, sum(t[0] for t in tot) / n, sum(t[1] for t in tot) / n, sum(t[2] for t in tot) / n))
 json.dump([list(map(str, f)) for f in filas], open(os.path.join(SALIDA, "resultados.json"), "w"))
