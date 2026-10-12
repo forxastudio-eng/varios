@@ -1,0 +1,14 @@
+id: sorpresa
+title: Sinfonía de la sorpresa
+composer: Joseph Haydn
+era: Clasicismo
+work: Sinfonía n.º 94, II Andante (1791)
+key: C
+meter: 2/4
+tempo: 100
+difficulty: 1
+tip: Toca muy suave y regular; solo teclas blancas. ¡El susto llega al final!
+fun: Haydn quiso despertar con un acorde fortísimo a los que se dormían en el concierto.
+L: 1/8
+RH: C C E E | G G E2 | F F D D | B, B, G,2 | C C E E | G G E2 | F F D D | G, G, C2 |]
+LH: C,2 [E,G,]2 | C,2 [E,G,]2 | G,,2 [B,D]2 | G,,2 [B,D]2 | C,2 [E,G,]2 | C,2 [E,G,]2 | G,,2 [B,D]2 | G,,2 [C,E,]2 |]

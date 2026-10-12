@@ -1,0 +1,17 @@
+id: para-elisa
+title: Para Elisa
+composer: Ludwig van Beethoven
+era: Clasicismo
+work: Bagatela en La menor, WoO 59 (1810)
+key: Am
+meter: 3/8
+tempo: 66
+difficulty: 2
+pickup: 0.5
+tip: Las dos primeras notas (E y D#) se repiten como un balanceo. Ve despacio y con la derecha sola.
+fun: Nadie sabe con certeza quién era Elisa.
+L: 1/16
+RH: e ^d | e ^d e B d c | A2 z C E A | B2 z E ^G B | c2 z e ^d e | ^d e B d c2 | A2 z C E A | B2 z E c B | A2 z2 e ^d |
+    e ^d e B d c | A2 z C E A | B2 z E ^G B | c2 z e ^d e | ^d e B d c2 | A2 z C E A | B2 z E c B | A6 |]
+LH: z2 | z6 | z3 A,, E, A, | z3 E,, E, ^G, | z3 A,, E, A, | z6 | z3 A,, E, A, | z3 E,, E, ^G, | A,,2 z4 |
+    z6 | z3 A,, E, A, | z3 E,, E, ^G, | z3 A,, E, A, | z6 | z3 A,, E, A, | z3 E,, E, ^G, | A,,2 E,2 A,2 |]

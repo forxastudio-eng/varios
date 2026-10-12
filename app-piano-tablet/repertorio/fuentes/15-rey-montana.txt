@@ -1,0 +1,14 @@
+id: rey-montana
+title: En la gruta del rey de la montaña
+composer: Edvard Grieg
+era: Romanticismo
+work: Peer Gynt, suite n.º 1 (1875)
+key: Bm
+meter: 4/4
+tempo: 96
+difficulty: 2
+tip: Empieza lento: sube por la escala B-C#-D-E-F# y baja. La segunda frase usa una F natural (la tecla blanca justo antes de F#).
+fun: Grieg la describió como «tan llena de vacas que no soporto escucharla».
+L: 1/8
+RH: B c d e f d f2 | =f d =f2 e c e2 | B c d e f d f2 | b2 a f d f a2 | B c d e f d f2 | =f d =f2 e c e2 | B c d e f d f2 | b2 a f d f a2 | b8 |]
+LH: B,,2 [D,F,]2 B,,2 [D,F,]2 | B,,2 [D,F,]2 B,,2 [D,F,]2 | B,,2 [D,F,]2 B,,2 [D,F,]2 | B,,2 [D,F,]2 B,,2 [D,F,]2 | B,,2 [D,F,]2 B,,2 [D,F,]2 | B,,2 [D,F,]2 B,,2 [D,F,]2 | B,,2 [D,F,]2 B,,2 [D,F,]2 | B,,2 [D,F,]2 B,,2 [D,F,]2 | [B,,F,]8 |]

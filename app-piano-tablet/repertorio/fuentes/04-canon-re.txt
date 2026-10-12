@@ -1,0 +1,16 @@
+id: canon-re
+title: Canon en Re
+composer: Johann Pachelbel
+era: Barroco
+work: Canon y Giga en Re mayor (c. 1680)
+key: D
+meter: 4/4
+tempo: 66
+difficulty: 2
+tip: La izquierda repite siempre el mismo patrón de 8 acordes. Aprende primero solo la izquierda.
+fun: Su secuencia de acordes se usa en cientos de canciones pop.
+L: 1/4
+RH: f2 e2 | d2 c2 | B2 A2 | B2 c2 | d2 c2 | B2 A2 | G2 F2 | G2 A2 | f2 e2 | d2 c2 | B2 A2 | B2 c2 | d4 |]
+LH: D,[F,A,] A,,[CE] | B,,[DF] F,,[A,C] | G,,[B,D] D,[F,A,] | G,,[B,D] A,,[CE] |
+    D,[F,A,] A,,[CE] | B,,[DF] F,,[A,C] | G,,[B,D] D,[F,A,] | G,,[B,D] A,,[CE] |
+    D,[F,A,] A,,[CE] | B,,[DF] F,,[A,C] | G,,[B,D] D,[F,A,] | G,,[B,D] A,,[CE] | [D,,A,,D,]4 |]

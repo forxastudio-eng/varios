@@ -1,0 +1,14 @@
+id: quinta-sinfonia
+title: Quinta Sinfonía (el destino)
+composer: Ludwig van Beethoven
+era: Clasicismo
+work: Sinfonía n.º 5, I (1808)
+key: Cm
+meter: 2/4
+tempo: 108
+difficulty: 1
+tip: Tres notas rápidas iguales y una larga. Mantén la nota larga hasta que se acabe la barra.
+fun: "Así llama el destino a la puerta", habría dicho Beethoven.
+L: 1/8
+RH: z G G G | _E4 | z F F F | D4 | z G G G | _E4 | z F F F | D4 | z _A _A _A | G4 | z G G G | _E4 | C4 |]
+LH: z [C,E,]3 | C,4 | z [B,,D,]3 | G,,4 | z [C,E,]3 | C,4 | z [B,,D,]3 | G,,4 | z [F,,A,,]3 | E,,4 | z [C,E,]3 | C,4 | [C,,G,,C,]4 |]

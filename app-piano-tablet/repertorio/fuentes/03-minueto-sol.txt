@@ -1,0 +1,16 @@
+id: minueto-sol
+title: Minueto en Sol
+composer: Christian Petzold (atribuido a J. S. Bach)
+era: Barroco
+work: Cuaderno de Anna Magdalena Bach (c. 1725)
+key: G
+meter: 3/4
+tempo: 112
+difficulty: 2
+tip: Cuenta 1-2-3 en cada compás. La mano izquierda toca una nota grave y luego dos notas juntas.
+fun: Durante siglos se creyó que era de Bach; es de su contemporáneo Petzold.
+L: 1/4
+RH: d G/A/B/c/ | d G G | e c/d/e/f/ | g G G | c d/c/B/A/ | B c/B/A/G/ | F G/A/B/G/ | A3 |
+    d G/A/B/c/ | d G G | e c/d/e/f/ | g G G | c d/c/B/A/ | B c/B/A/G/ | F G/A/B/G/ | G3 |]
+LH: G,,[B,D]2 | G,,[B,D]2 | C,[E,G,]2 | G,,[B,D]2 | C,[E,G,]2 | G,,[B,D]2 | D,[F,A,]2 | D,3 |
+    G,,[B,D]2 | G,,[B,D]2 | C,[E,G,]2 | G,,[B,D]2 | C,[E,G,]2 | G,,[B,D]2 | D,[F,A,]2 | G,,3 |]

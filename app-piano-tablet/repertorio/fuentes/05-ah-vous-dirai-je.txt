@@ -1,0 +1,14 @@
+id: ah-vous-dirai-je
+title: Estrellita (Ah! vous dirai-je, maman)
+composer: Wolfgang Amadeus Mozart
+era: Clasicismo
+work: 12 variaciones, K. 265 (tema)
+key: C
+meter: 4/4
+tempo: 100
+difficulty: 1
+tip: Es la melodía de "Estrellita, ¿dónde estás?". Solo teclas blancas.
+fun: Mozart escribió 12 variaciones sobre esta canción popular francesa.
+L: 1/4
+RH: C C G G | A A G2 | F F E E | D D C2 | G G F F | E E D2 | G G F F | E E D2 | C C G G | A A G2 | F F E E | D D C2 |]
+LH: C,2 [E,G,]2 | F,2 [A,C]2 | F,2 [E,G,]2 | G,,2 [B,,D,]2 | C,2 [B,,D,]2 | C,2 [G,B,]2 | C,2 [B,,D,]2 | C,2 [G,B,]2 | C,2 [E,G,]2 | F,2 [A,C]2 | F,2 [E,G,]2 | G,,2 C,2 |]
