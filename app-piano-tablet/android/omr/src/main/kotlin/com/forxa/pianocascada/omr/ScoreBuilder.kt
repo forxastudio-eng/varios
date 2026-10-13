@@ -146,7 +146,8 @@ object ScoreBuilder {
         var pickup = Frac.ZERO
         if (barCount > 1 && d0 > Frac.ZERO && d0 < nominal) {
             val lastDurs = systems.last().lines.mapNotNull { it.parse.measureDurations.lastOrNull() }
-            if (lastDurs.any { it + d0 == nominal }) pickup = d0
+            // anacrusa si el último compás la completa o si es claramente corta (un compás inicial muy corto casi siempre es una anacrusa)
+            if (lastDurs.any { it + d0 == nominal } || d0 * Frac.of(2) <= nominal) pickup = d0
         }
         fun barStart(k: Int): Frac = if (pickup > Frac.ZERO) (if (k == 0) Frac.ZERO else pickup + nominal * Frac.of((k - 1).toLong())) else nominal * Frac.of(k.toLong())
 
