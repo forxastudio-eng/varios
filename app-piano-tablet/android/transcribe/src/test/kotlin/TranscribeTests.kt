@@ -194,22 +194,19 @@ class MidiImporterTest {
         return f.readBytes()
     }
 
-    @Test fun importsOdeToJoyWithTheRightStructure() {
-        val s = MidiImporter.parse(midi("01-himno-alegria.mid"), "himno", "Himno")
-        assertEquals(108, s.bpm)
-        assertEquals("4/4", s.meter)
-        assertEquals(16, s.bars)
-        assertEquals(62, s.rh.size)
-        assertEquals(47, s.lh.size)
-        assertEquals(listOf("E", "E", "F", "G"), s.rh.take(4).map { com.forxa.pianocascada.core.Notes.name(it.pitch) })
+    @Test fun importsMoonlightWithTheRightStructure() {
+        val s = MidiImporter.parse(midi("02-claro-de-luna.mid"), "luna", "Claro de luna")
+        assertEquals(54, s.bpm)
+        assertEquals(69, s.bars)
+        assertTrue(s.rh.size > 700 && s.lh.size > 200, "manos: ${s.rh.size} / ${s.lh.size}")
         assertTrue(s.rh.all { it.hand == Hand.RIGHT } && s.lh.all { it.hand == Hand.LEFT })
     }
 
     @Test fun importsAMultiTrackPieceWithItsPickup() {
-        val s = MidiImporter.parse(midi("02-para-elisa.mid"), "elisa", "Elisa")
+        val s = MidiImporter.parse(midi("01-para-elisa.mid"), "elisa", "Elisa")
         assertEquals("3/8", s.meter)
-        assertEquals(66, s.bpm)
-        assertTrue(s.rh.size > 60 && s.lh.isNotEmpty())
+        assertEquals(76, s.bpm)
+        assertTrue(s.rh.size > 500 && s.lh.size > 300)
     }
 
     @Test fun rejectsNonMidi() {

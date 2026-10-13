@@ -83,7 +83,7 @@ fun OnboardingScreen(app: PianoApp, settings: Settings, onFinish: (startSongId: 
             if (step < STEPS - 1) PrimaryButton(if (done) "Siguiente" else "Haz el paso para continuar", { step++ }, enabled = done, big = true)
             else {
                 GhostButton("Ir al inicio", { onFinish(null) })
-                PrimaryButton("Tocar el Himno de la alegría", { onFinish("himno-alegria") }, big = true)
+                PrimaryButton("Tocar Para Elisa", { onFinish("para-elisa") }, big = true)
             }
         }
     }
@@ -100,7 +100,7 @@ private fun StepText(step: Int) {
         5 -> "Calibra tu toque" to "El piano detecta cuánto presionas por el tamaño de tu dedo en la pantalla.\n\nPrimero toca varias teclas muy suave, con la yema. Después varias fuerte, con el dedo más plano."
         6 -> "Así caen las notas" to "Mira las barras que bajan: cuando una llegue a la línea luminosa, toca su tecla.\n\nEn el modo Espera la música se detiene hasta que aciertas, así nunca te pierdes.\n\nToca C, D, E, F, G."
         7 -> "Notas largas" to "La primera barra es larga: debes mantener la tecla pulsada mientras la barra pasa por la línea.\n\nLas barras cortas son notas rápidas.\n\nMantén la C y luego toca la G."
-        else -> "¡Listo!" to "Ya sabes lo básico. Tu biblioteca tiene canciones clásicas para aprender: con la melodía sola, con el bajo y con las dos manos.\n\nEmpieza con el Himno de la alegría: solo usa cinco notas."
+        else -> "¡Listo!" to "Ya sabes lo básico. Tu biblioteca tiene dos obras maestras para aprender: Para Elisa y el Claro de luna, con la melodía sola, con el bajo y con las dos manos.\n\nEmpieza con Para Elisa y el nivel 1: solo la melodía."
     }
     Text("Paso ${step + 1} de $STEPS", color = PC.right, style = MaterialTheme.typography.labelMedium)
     Gap(h = 8.dp)
@@ -123,7 +123,7 @@ private class TutorialListener(val onPress: (pitch: Int, sizeMm: Float) -> Int, 
 private fun StepArea(app: PianoApp, settings: Settings, step: Int, onDone: () -> Unit) {
     when (step) {
         0 -> {
-            val himno = remember { app.songs.find("himno-alegria") }
+            val himno = remember { app.songs.find("para-elisa") }
             if (himno != null) DemoSurface(app, settings, himno, PracticeMode.LISTEN, 0.8f, 1, autoPlay = true, onDone = {}) else Hero()
         }
         1 -> Hero()

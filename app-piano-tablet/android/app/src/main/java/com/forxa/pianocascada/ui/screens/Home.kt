@@ -45,7 +45,7 @@ fun HomeScreen(
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val greeting = when { hour < 6 -> "Buenas noches"; hour < 13 -> "Buenos días"; hour < 21 -> "Buenas tardes"; else -> "Buenas noches" }
     val lastId = progress.filter { it.value.lastPlayed > 0 }.maxByOrNull { it.value.lastPlayed }?.key
-    val cont = songs.firstOrNull { it.id == lastId } ?: songs.firstOrNull { it.id == "himno-alegria" } ?: songs.firstOrNull()
+    val cont = songs.firstOrNull { it.id == lastId } ?: songs.firstOrNull { it.id == "para-elisa" } ?: songs.firstOrNull()
     val played = lastId != null
 
     Column(Modifier.fillMaxSize().background(PC.bg).padding(horizontal = 56.dp, vertical = 40.dp)) {

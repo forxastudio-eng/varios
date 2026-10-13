@@ -51,7 +51,7 @@ class SongLibraryTest {
     private val songs = SongLibrary.parse(songsJson())
 
     @Test fun loadsAllSongsWithUniqueIds() {
-        assertTrue(songs.size >= 17, "hay ${songs.size} canciones")
+        assertEquals(2, songs.size, "la biblioteca incluye solo Para Elisa y Claro de luna")
         assertEquals(songs.size, songs.map { it.id }.toSet().size)
     }
 
@@ -80,19 +80,39 @@ class SongLibraryTest {
         }
     }
 
-    @Test fun odeToJoyIsExact() {
-        val s = songs.first { it.id == "himno-alegria" }
-        val first = s.notes(1).take(8).map { Notes.name(it.pitch) }
-        assertEquals(listOf("E", "E", "F", "G", "G", "F", "E", "D"), first)
-        assertEquals(16, s.bars)
-        assertEquals(4f, s.beatsPerBar)
+    private val elisaAMelody = listOf(
+        76, 75, 76, 75, 76, 71, 74, 72, 69,        // E D# E D# E B D C A
+        60, 64, 69, 71,                            // C E A B
+        64, 68, 71, 72,                            // E G# B C
+        64, 76, 75, 76, 75, 76, 71, 74, 72, 69,    // E E D# E D# E B D C A   (los compases 5 y 6, donde falló la versión de memoria)
+        60, 64, 69, 71,                            // C E A B
+        64, 72, 71, 69,                            // E C B A
+    )
+
+    @Test fun furEliseOpeningIsExact() {
+        val s = songs.first { it.id == "para-elisa" }
+        assertEquals("3/8", s.meter)
+        assertEquals(1.5f, s.beatsPerBar)
+        // la primera frase completa (con su acompañamiento correcto) la confirman 3 fuentes independientes
+        val rh = s.rh.sortedWith(compareBy({ it.start }, { it.pitch })).map { it.pitch }
+        assertEquals(elisaAMelody, rh.take(elisaAMelody.size))
+        val lh = s.lh.sortedBy { it.start }.map { it.pitch }.take(6)
+        assertEquals(listOf(45, 52, 57, 40, 52, 56), lh)   // A2 E3 A3 · E2 E3 G#3
     }
 
-    @Test fun furElisePickupIsBarZero() {
-        val s = songs.first { it.id == "para-elisa" }
-        assertTrue(s.pickup > 0f)
-        assertEquals(0, s.barLabel(0)); assertEquals(1, s.barLabel(1))
-        assertEquals("E", Notes.name(s.rh.first().pitch)); assertEquals(76, s.rh.first().pitch)
+    @Test fun moonlightOpeningIsExact() {
+        val s = songs.first { it.id == "claro-de-luna" }
+        assertEquals(69, s.bars)
+        assertEquals(4f, s.beatsPerBar)
+        val rh = s.rh.sortedWith(compareBy({ it.start }, { it.pitch })).take(12).map { it.pitch }
+        assertEquals(listOf(56, 61, 64), rh.take(3))                      // G#3 C#4 E4: el arpegio del tresillo
+        assertEquals(List(4) { listOf(56, 61, 64) }.flatten(), rh)
+        val bass = s.lh.filter { it.start < 4f }.map { it.pitch }.sorted()
+        assertEquals(listOf(37, 49), bass)                                // C#2 y C#3: la octava del bajo
+    }
+
+    @Test fun onlyTheTwoVerifiedPiecesAreIncluded() {
+        assertEquals(listOf("para-elisa", "claro-de-luna"), songs.map { it.id })
     }
 
     @Test fun bassLevelHasOneNotePerBarAtMost() {
@@ -102,7 +122,7 @@ class SongLibraryTest {
     }
 
     @Test fun sequenceMatchesSongTiming() {
-        val s = songs.first { it.id == "himno-alegria" }
+        val s = songs.first { it.id == "para-elisa" }
         val seq = Sequencer.build(s, 3)
         val notes = s.notes(3)
         assertEquals(notes.size, seq.size)
@@ -142,8 +162,8 @@ class TransposerTest {
     }
 
     @Test fun majorKeysMapToWhiteKeys() {
-        val d = SongLibrary.parse(songsJson()).first { it.id == "coral-castillo-fuerte" } // Re mayor (2 sostenidos)
-        val plan = Transposer.bestWhiteKeyShift((d.rh + d.lh).map { it.pitch })
+        val dMajorScale = listOf(62, 64, 66, 67, 69, 71, 73, 74)           // Re mayor (2 sostenidos)
+        val plan = Transposer.bestWhiteKeyShift(dMajorScale)
         assertEquals(-2, plan.shift)
         assertTrue(plan.blackAfter < plan.blackBefore)
         assertEquals("C", Transposer.transposeKeyName("D", plan.shift))
@@ -158,11 +178,11 @@ class TransposerTest {
     }
 
     @Test fun transposedSongShiftsEveryNote() {
-        val s = SongLibrary.parse(songsJson()).first { it.id == "himno-alegria" }
+        val s = SongLibrary.parse(songsJson()).first { it.id == "para-elisa" }
         val t = s.transposed(2)
         assertEquals(s.rh.map { it.pitch + 2 }, t.rh.map { it.pitch })
         assertEquals(2, t.transposeShift)
-        assertEquals("D", t.key)
+        assertEquals("Bm", t.key)
     }
 }
 
