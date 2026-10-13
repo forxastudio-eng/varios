@@ -5,6 +5,7 @@ on:
     branches: ["claude/**"]
     paths:
       - "app-piano-tablet/android/**"
+      - "app-piano-tablet/tools/descargar_modelos_omr.sh"
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
@@ -37,8 +38,11 @@ jobs:
         with:
           packages: "platform-tools platforms;android-35 build-tools;35.0.0 ndk;27.0.12077973 cmake;3.22.1"
 
-      - name: Pruebas de la lógica pura (core)
-        run: PIANO_CORE_ONLY=1 ./gradlew :core:test --no-daemon
+      - name: Descargar los modelos del lector de partituras (van dentro del APK)
+        run: ../tools/descargar_modelos_omr.sh
+
+      - name: Pruebas de la lógica pura (núcleo) y del lector de partituras con los modelos reales
+        run: OMR_MODELS=$PWD/app/src/main/assets/omr PIANO_CORE_ONLY=1 ./gradlew :core:test :omr:test --no-daemon
 
       - name: Compilar el APK
         run: ./gradlew :app:assembleRelease --no-daemon --console=plain

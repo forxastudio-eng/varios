@@ -39,7 +39,6 @@ import com.forxa.pianocascada.data.LayoutMode
 import com.forxa.pianocascada.data.Settings
 import com.forxa.pianocascada.importer.ImportController
 import com.forxa.pianocascada.importer.ImportState
-import com.forxa.pianocascada.importer.OmrClient
 import com.forxa.pianocascada.piano.HandsMode
 import com.forxa.pianocascada.piano.PracticeController
 import com.forxa.pianocascada.ui.components.Card
@@ -59,11 +58,8 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
     val ctl = remember { ImportController(app) }
     DisposableEffect(Unit) { onDispose { if (ctl.state is ImportState.Working) ctl.cancel() } }
     val state = ctl.state
-    var avisoServidor by remember { mutableStateOf(false) }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ctl.importAudio(uri) }
-    val scorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) ctl.importScore(uri, settings.serverUrl)
-    }
+    val scorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ctl.importScore(uri) }
     val midiPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ctl.importMidi(uri) }
     val songPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ctl.importSongFile(uri) }
 
@@ -75,9 +71,8 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
         Gap(h = 24.dp)
         when (state) {
             is ImportState.Idle -> IdleView(
-                app, settings, avisoServidor,
                 onAudio = { audioPicker.launch(arrayOf("audio/*")) },
-                onScore = { if (settings.serverUrl.isBlank()) avisoServidor = true else scorePicker.launch(arrayOf("application/pdf", "image/*")) },
+                onScore = { scorePicker.launch(arrayOf("application/pdf", "image/*")) },
                 onMidi = { midiPicker.launch(arrayOf("*/*")) },
                 onSong = { songPicker.launch(arrayOf("*/*")) },
             )
@@ -95,42 +90,12 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
 }
 
 @Composable
-private fun IdleView(app: PianoApp, settings: Settings, avisoServidor: Boolean, onAudio: () -> Unit, onScore: () -> Unit, onMidi: () -> Unit, onSong: () -> Unit) {
-    var url by remember { mutableStateOf(settings.serverUrl) }
-    var test by remember { mutableStateOf("") }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-        Column(Modifier.weight(1.3f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-            OptionCard(G.WAVE, "Audio: MP3, M4A, WAV…", "Convierte una grabación en notas que caen. Funciona mejor con piano solo, y tarda unos segundos por cada minuto de música.", "Elegir un audio", onAudio, PC.right)
-            OptionCard(G.FILE, "Partitura en PDF o foto", "Lee la partitura con reconocimiento óptico musical. Necesita el programa «servidor» abierto en un ordenador de tu casa (instrucciones a la derecha).", "Elegir PDF o foto", onScore, PC.left)
-            OptionCard(G.NOTE, "Archivo MIDI", "Importación exacta de un .mid, con las dos manos si el archivo las trae separadas. Ideal para obras como el «Claro de luna».", "Elegir un MIDI", onMidi, PC.ok)
-            OptionCard(G.FILE, "Canción preparada (.json)", "Una canción ya leída y revisada de una partitura (voz y piano, con los tres niveles). Funciona sin internet ni servidor.", "Elegir el archivo", onSong, PC.right)
-        }
-        Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
-            SectionTitle("Servidor en casa (para PDF y fotos)")
-            if (avisoServidor && url.isBlank()) {
-                Text("Para leer un PDF o una foto primero escribe aquí abajo la dirección del servidor y pulsa «Probar conexión».", color = PC.left, style = MaterialTheme.typography.bodyMedium)
-                Gap(h = 8.dp)
-            }
-            Text("Un pequeño programa en tu ordenador (carpeta «servidor» del proyecto) que lee las partituras. La tablet y el ordenador deben estar en la misma red Wi‑Fi.", color = PC.text2, style = MaterialTheme.typography.bodyMedium)
-            Gap(h = 12.dp)
-            Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp)).background(PC.surface2).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {
-                if (url.isEmpty()) Text("http://192.168.1.20:8765", color = PC.text3, style = MaterialTheme.typography.bodyMedium)
-                BasicTextField(
-                    value = url, onValueChange = { url = it; app.settings.update { s -> s.copy(serverUrl = it.trim()) } }, singleLine = true,
-                    textStyle = TextStyle(color = PC.text1, fontSize = MaterialTheme.typography.bodyMedium.fontSize), cursorBrush = SolidColor(PC.text1), modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Gap(h = 10.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip("Probar conexión", false, {
-                    test = "Probando…"
-                    Thread { val ok = runCatching { OmrClient(url).health() }.getOrDefault(false); test = if (ok) "✓ Servidor encontrado" else "✗ No responde" }.start()
-                })
-                Text(test, color = if (test.startsWith("✓")) PC.ok else PC.text2, style = MaterialTheme.typography.bodyMedium)
-            }
-            @Suppress("UNUSED_VARIABLE") val unused = scope
-        }
+private fun IdleView(onAudio: () -> Unit, onScore: () -> Unit, onMidi: () -> Unit, onSong: () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        OptionCard(G.FILE, "Partitura en PDF o foto", "La app lee la partitura por sí sola, sin internet ni ordenador: dibuja cada página, reconoce las notas y las convierte en tu tutorial. Una página tarda alrededor de un minuto; funciona mejor con partituras nítidas y rectas.", "Elegir PDF o foto", onScore, PC.left)
+        OptionCard(G.WAVE, "Audio: MP3, M4A, WAV…", "Convierte una grabación en notas que caen. Funciona mejor con piano solo, y tarda unos segundos por cada minuto de música.", "Elegir un audio", onAudio, PC.right)
+        OptionCard(G.NOTE, "Archivo MIDI", "Importación exacta de un .mid, con las dos manos si el archivo las trae separadas. Ideal para obras como el «Claro de luna».", "Elegir un MIDI", onMidi, PC.ok)
+        OptionCard(G.FILE, "Canción preparada (.json)", "Una canción ya leída y revisada de una partitura (voz y piano, con los tres niveles). Funciona sin internet.", "Elegir el archivo", onSong, PC.right)
     }
 }
 

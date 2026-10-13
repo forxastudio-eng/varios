@@ -48,6 +48,7 @@ class ImportController(private val app: PianoApp) {
         if (e is InterruptedException) { state = ImportState.Idle; return }
         val msg = when (e) {
             is AudioDecoder.TooLong -> "El audio es demasiado largo (máximo ${e.seconds / 60} minutos). Prueba con un fragmento."
+            is com.forxa.pianocascada.omr.OmrException -> e.message ?: "No se pudo leer la partitura"
             is OutOfMemoryError -> "No hay memoria suficiente para este archivo. Prueba con uno más corto."
             else -> e.message ?: "No se pudo importar el archivo"
         }
@@ -127,23 +128,18 @@ class ImportController(private val app: PianoApp) {
         }
     }
 
-    // ------------------------------------------------------------------ partitura (PDF / foto) mediante el servidor
-    fun importScore(uri: Uri, serverUrl: String) {
+    // ------------------------------------------------------------------ partitura (PDF / foto), dentro de la tablet y sin internet
+    fun importScore(uri: Uri) {
         val title = displayName(uri)
         cancelFlag = false
-        state = ImportState.Working(0f, "Conectando con el servidor…", title)
+        state = ImportState.Working(0f, "Preparando el lector de partituras…", title)
         exec.execute {
             try {
-                if (serverUrl.isBlank()) throw IllegalStateException("Todavía no has indicado la dirección del servidor. Escríbela en el cuadro «Servidor en casa» (por ejemplo http://192.168.1.20:8765) y pulsa «Probar conexión».")
-                val client = OmrClient(serverUrl)
-                if (!client.health()) throw IllegalStateException("No se pudo conectar con el servidor «${serverUrl.trim()}». Comprueba que el programa está abierto en el ordenador, que la tablet y el ordenador están en la misma red Wi‑Fi y que la dirección empieza por http:// y termina en :8765.")
-                val mime = app.contentResolver.getType(uri) ?: "application/pdf"
-                val res = client.convert(app, uri, title + if (mime.contains("pdf")) ".pdf" else ".jpg", mime,
+                val out = ScoreReader(app).read(uri, slug(title), title,
                     onProgress = { p, m -> state = ImportState.Working(p, m, title) }, cancelled = { cancelFlag })
-                val parsed = SongLibrary.parse(res.json).single()
-                val song = parsed.copy(id = slug(title), title = title, source = SongSource.PDF)
+                val song = out.song
                 if (song.notes(3).isEmpty()) throw NoNotes("No se ha encontrado música en la partitura. Comprueba que la imagen es nítida y está recta.")
-                state = ImportState.Review(title, song, null, 0f, res.warnings, "${song.notes(3).size} notas · ${song.bars} compases · ${song.meter} · ${com.forxa.pianocascada.core.Transposer.displayKey(song.key)}")
+                state = ImportState.Review(title, song, null, 0f, out.warnings, "${song.notes(3).size} notas · ${song.bars} compases · ${song.meter} · ${com.forxa.pianocascada.core.Transposer.displayKey(song.key)}")
             } catch (e: Throwable) { fail(e) }
         }
     }

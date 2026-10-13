@@ -4,8 +4,11 @@
 |---|---|---|
 | Muestras de piano (`piano.bin`) | «Yamaha Grand Piano» de **FluidR3_GM** — Frank Wen | MIT |
 | Modelo de transcripción de audio (`nmp.onnx`) | **Basic Pitch** — Spotify | Apache 2.0 |
-| Lector de partituras PDF/foto (servidor, se descarga aparte, no va dentro del APK) | **Audiveris** | AGPL-3.0 |
-| Lectura de páginas PDF en el servidor | **PyMuPDF** | AGPL-3.0 (uso personal) |
+| Lector de partituras PDF/foto dentro de la app (módulo `omr`: traducción a Kotlin del método de **homr**) y sus tres modelos ONNX (`segnet`, `encoder`, `decoder`, ≈ 150 MB, se descargan al compilar con `tools/descargar_modelos_omr.sh`) | **homr** — Lukas Lang («liebharc») | AGPL-3.0 |
+| Visión por computador en la tablet | **OpenCV** (paquete `com.quickbirdstudios:opencv`) | Apache 2.0 |
+| Ejecución de los modelos | **ONNX Runtime** — Microsoft | MIT |
+| Servidor opcional de lectura de partituras (carpeta `servidor/`, solo para desarrollo y comparaciones) | **Audiveris** | AGPL-3.0 |
+| Lectura de páginas PDF en ese servidor | **PyMuPDF** | AGPL-3.0 (uso personal) |
 | Partituras exactas del repertorio | Corpus de **music21** (MIT, Cuthbert Lab) con obras de dominio público | Dominio público (obras) |
 | Transcripciones manuales (Himno de la alegría, Para Elisa, etc.) | Elaboración propia a partir de obras de dominio público | Propia |
 

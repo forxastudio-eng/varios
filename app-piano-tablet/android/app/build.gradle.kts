@@ -51,6 +51,9 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":transcribe"))
+    implementation(project(":omr"))
+    // OpenCV para Android (el módulo omr solo lo declara; en el PC las pruebas usan el de openpnp)
+    implementation("com.quickbirdstudios:opencv:4.5.3")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 
     implementation(platform("androidx.compose:compose-bom:2024.10.01"))

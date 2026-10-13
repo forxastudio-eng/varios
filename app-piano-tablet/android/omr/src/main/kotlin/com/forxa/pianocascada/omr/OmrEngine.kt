@@ -8,8 +8,29 @@ import org.opencv.core.Scalar
 /** Rutas de los tres modelos (los mismos de homr, formato ONNX). */
 class OmrModels(val segnet: String, val encoder: String, val decoder: String)
 
-/** Resultado de leer una página: un flujo de símbolos por voz (cada pentagrama de un sistema es una voz). */
-class PageResult(val voices: List<List<EncodedSymbol>>, val warnings: List<String>)
+/** Símbolos leídos de un pentagrama; [isGrand] indica que agrupa dos pentagramas (mano derecha e izquierda). */
+class StaffTokens(val tokens: List<EncodedSymbol>, val isGrand: Boolean)
+
+/** Un sistema (línea de la partitura): sus pentagramas de arriba abajo. */
+class SystemTokens(val staves: List<StaffTokens>)
+
+/** Resultado de leer una página. */
+class PageResult(val systems: List<SystemTokens>, val warnings: List<String>) {
+    /** Como lo agrupa homr: un flujo de símbolos por voz (el pentagrama n de cada sistema), ya limpio. */
+    val voices: List<List<EncodedSymbol>> by lazy {
+        if (systems.isEmpty()) return@lazy emptyList()
+        val count = systems[0].staves.size
+        (0 until count).map { v ->
+            val all = ArrayList<EncodedSymbol>()
+            for (s in systems) {
+                val t = s.staves.getOrNull(v)?.tokens ?: continue
+                if (t.isEmpty()) continue
+                all.addAll(t); all.add(EncodedSymbol("newline"))
+            }
+            TokenOps.removeDuplicatedSymbols(all)
+        }
+    }
+}
 
 /**
  * Lector de partituras sin conexión (traducción a Kotlin de homr, AGPL-3.0).
@@ -57,16 +78,14 @@ class OmrEngine(private val models: OmrModels, private val threads: Int = Runtim
     ): PageResult {
         val warnings = ArrayList<String>()
         val systems = StaffParsing.ensureSameNumberOfStaffs(systemsIn, image.rows())
-        val voices = systems[0].staffs.size
         val regions = StaffRegions(systems)
-        val total = systems.size * voices
+        val total = systems.sumOf { it.staffs.size }
         var done = 0
-        val result = ArrayList<List<EncodedSymbol>>()
-        for (voice in 0 until voices) {
-            val forVoice = ArrayList<EncodedSymbol>()
-            for (system in systems) {
+        val result = ArrayList<SystemTokens>()
+        for (system in systems) {
+            val staves = ArrayList<StaffTokens>()
+            for (staff in system.staffs) {
                 if (cancelled()) throw InterruptedException("cancelado")
-                val staff = system.staffs[voice]
                 onProgress(base + span * done / total, "Leyendo el pentagrama ${done + 1} de $total…")
                 val symbols = try {
                     val canvas = StaffParsing.prepareStaffImage(staff, image, regions)
@@ -79,11 +98,9 @@ class OmrEngine(private val models: OmrModels, private val threads: Int = Runtim
                     emptyList()
                 }
                 done++
-                if (symbols.isEmpty()) continue
-                forVoice.addAll(symbols)
-                forVoice.add(EncodedSymbol("newline"))
+                staves.add(StaffTokens(symbols, staff.isGrandstaff))
             }
-            result.add(TokenOps.removeDuplicatedSymbols(forVoice))
+            result.add(SystemTokens(staves))
         }
         onProgress(base + span, "Página leída")
         return PageResult(result, warnings)
