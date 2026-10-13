@@ -50,3 +50,22 @@ def test_pdf_sin_audiveris_da_error_claro():
 
 def test_trabajo_inexistente():
     assert cliente.get("/jobs/nope").status_code == 404
+
+
+def test_progreso_de_audiveris_se_lee_del_registro():
+    import omr
+    m = omr.PASO_AUDIVERIS.search("2026-10-12 22:57:57,687 INFO [bach_bwv846#2]       StepMonitoring.java:98   | SCALE\n")
+    assert m and m.group(1) == "2" and m.group(2) == "SCALE" and "SCALE" in omr.PASOS_AUDIVERIS
+    assert omr.PASO_AUDIVERIS.search("INFO [x#1] Voice.java:257 | Measure{#1} Voice{#5 excess:7/16} too long") is None
+
+
+def test_estimar_interlinea_de_pentagrama_sintetico():
+    import omr
+    from PIL import Image, ImageDraw
+    im = Image.new("L", (900, 1200), 255)
+    d = ImageDraw.Draw(im)
+    for sistema in range(4):
+        y0 = 150 + sistema * 250
+        for k in range(5):
+            d.line([(60, y0 + k * 24), (840, y0 + k * 24)], fill=0, width=2)
+    assert omr.estimar_interlinea(im) == 24.0

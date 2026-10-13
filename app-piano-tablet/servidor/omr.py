@@ -16,11 +16,21 @@ CANDIDATOS_EXE = [
 ]
 
 
+def _audiveris_local() -> str | None:
+    """Audiveris descargado por los scripts de arranque en la carpeta «audiveris» junto a este archivo."""
+    raiz = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audiveris")
+    for nombre in ("Audiveris.exe", "Audiveris"):
+        for ruta in glob.glob(os.path.join(raiz, "**", nombre), recursive=True):
+            if os.path.isfile(ruta):
+                return ruta
+    return None
+
+
 def localizar_audiveris() -> str | None:
     for c in CANDIDATOS_EXE:
         if c and os.path.isfile(c) and os.access(c, os.X_OK):
             return c
-    return shutil.which("audiveris") or shutil.which("Audiveris")
+    return _audiveris_local() or shutil.which("audiveris") or shutil.which("Audiveris")
 
 
 # Interlínea (distancia entre líneas del pentagrama) con la que Audiveris acierta mejor los ritmos:
@@ -107,19 +117,33 @@ def preparar_imagen(ruta: str, destino_dir: str) -> str:
     return destino
 
 
-def dpi_para_pdf(ruta: str) -> int:
-    """Resolución con la que Audiveris debe leer el PDF para que el pentagrama mida ~INTERLINEA_OBJETIVO px.
-    Se renderiza la primera página (con pdftoppm, de poppler) a 150 ppp, se mide el pentagrama y se escala."""
+def _primera_pagina_gris(ruta: str, ppp: int = 150):
+    """Primera página del PDF como imagen en gris: con PyMuPDF si está instalado o con pdftoppm (poppler)."""
+    import io
     import tempfile
     from PIL import Image
     try:
-        with tempfile.TemporaryDirectory() as d:
-            subprocess.run(["pdftoppm", "-r", "150", "-gray", "-f", "1", "-l", "1", "-png", ruta, os.path.join(d, "p")],
-                           check=True, capture_output=True, timeout=120)
-            png = sorted(glob.glob(os.path.join(d, "p*.png")))
-            if not png:
-                return 300
-            inter = estimar_interlinea(Image.open(png[0]).convert("L"))
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz   # versiones antiguas de PyMuPDF
+        with fitz.open(ruta) as doc:
+            pix = doc[0].get_pixmap(dpi=ppp, colorspace=fitz.csGRAY)
+            return Image.open(io.BytesIO(pix.tobytes("png"))).convert("L")
+    except ImportError:
+        pass
+    with tempfile.TemporaryDirectory() as d:
+        subprocess.run(["pdftoppm", "-r", str(ppp), "-gray", "-f", "1", "-l", "1", "-png", ruta, os.path.join(d, "p")],
+                       check=True, capture_output=True, timeout=120)
+        png = sorted(glob.glob(os.path.join(d, "p*.png")))
+        return Image.open(png[0]).convert("L") if png else None
+
+
+def dpi_para_pdf(ruta: str) -> int:
+    """Resolución con la que Audiveris debe leer el PDF para que el pentagrama mida ~INTERLINEA_OBJETIVO px."""
+    try:
+        img = _primera_pagina_gris(ruta, 150)
+        inter = estimar_interlinea(img) if img is not None else None
     except Exception:   # noqa: BLE001
         return 300
     if not inter:
@@ -135,12 +159,17 @@ def contar_paginas_pdf(ruta: str) -> int:
         return 0
 
 
+PASOS_AUDIVERIS = ["LOAD", "BINARY", "SCALE", "GRID", "HEADERS", "STEM_SEEDS", "BEAMS", "LEDGERS", "HEADS", "STEMS",
+                   "REDUCTION", "CUE_BEAMS", "TEXTS", "MEASURES", "CHORDS", "CURVES", "SYMBOLS", "LINKS", "RHYTHMS", "PAGE"]
+PASO_AUDIVERIS = re.compile(r"\[[^\]]*#(\d+)\].*\|\s*([A-Z_]+)\s*$")
+
+
 def ejecutar_audiveris(entrada: str, salida: str, progreso: Callable[[float, str], None], paginas: int = 0,
                        tiempo_max: int = 20 * 60) -> str:
     """Devuelve la ruta del MusicXML exportado."""
     exe = localizar_audiveris()
     if not exe:
-        raise RuntimeError("Audiveris no está instalado en el servidor (usa la imagen Docker del proyecto)")
+        raise RuntimeError("Audiveris no está instalado en el servidor. Cierra el servidor y vuelve a abrirlo con iniciar-servidor (descarga Audiveris la primera vez)")
     os.makedirs(salida, exist_ok=True)
     cmd = [exe, "-batch", "-export", "-output", salida]
     if entrada.lower().endswith(".pdf"):
@@ -152,19 +181,22 @@ def ejecutar_audiveris(entrada: str, salida: str, progreso: Callable[[float, str
     cmd += ["--", entrada]
     progreso(0.1, "Leyendo la partitura…")
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-    hechas = 0
     ultimas: list[str] = []
     import time
     t0 = time.time()
     assert p.stdout is not None
     for linea in p.stdout:
         ultimas = (ultimas + [linea.rstrip()])[-40:]
-        if re.search(r"(?i)(sheet|page)[^\n]*(transcribed|exported|completed)", linea):
-            hechas += 1
-            if paginas:
-                progreso(0.1 + 0.8 * min(1.0, hechas / paginas), f"Leyendo página {min(hechas + 1, paginas)} de {paginas}…")
-        elif re.search(r"(?i)(step|stage)", linea) and paginas == 0:
-            progreso(0.4, "Reconociendo símbolos…")
+        # Audiveris escribe una línea «[pieza#N] … | PASO» al empezar cada paso de cada página
+        m = PASO_AUDIVERIS.search(linea)
+        if m and m.group(2) in PASOS_AUDIVERIS:
+            hoja = int(m.group(1))
+            total = max(paginas, hoja, 1)
+            frac = ((hoja - 1) + (PASOS_AUDIVERIS.index(m.group(2)) + 1) / len(PASOS_AUDIVERIS)) / total
+            msg = f"Leyendo la página {hoja} de {total}…" if total > 1 else "Leyendo la partitura…"
+            progreso(0.12 + 0.78 * min(1.0, frac), msg)
+        elif "Exporting" in linea:
+            progreso(0.92, "Guardando el resultado…")
         if time.time() - t0 > tiempo_max:
             p.kill()
             raise RuntimeError("Audiveris tardó demasiado")

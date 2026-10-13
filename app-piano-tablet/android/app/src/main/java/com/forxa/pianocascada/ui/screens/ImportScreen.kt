@@ -59,6 +59,7 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
     val ctl = remember { ImportController(app) }
     DisposableEffect(Unit) { onDispose { if (ctl.state is ImportState.Working) ctl.cancel() } }
     val state = ctl.state
+    var avisoServidor by remember { mutableStateOf(false) }
     val audioPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ctl.importAudio(uri) }
     val scorePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) ctl.importScore(uri, settings.serverUrl)
@@ -72,7 +73,12 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
         }
         Gap(h = 24.dp)
         when (state) {
-            is ImportState.Idle -> IdleView(app, settings, onAudio = { audioPicker.launch(arrayOf("audio/*")) }, onScore = { scorePicker.launch(arrayOf("application/pdf", "image/*")) }, onMidi = { midiPicker.launch(arrayOf("*/*")) })
+            is ImportState.Idle -> IdleView(
+                app, settings, avisoServidor,
+                onAudio = { audioPicker.launch(arrayOf("audio/*")) },
+                onScore = { if (settings.serverUrl.isBlank()) avisoServidor = true else scorePicker.launch(arrayOf("application/pdf", "image/*")) },
+                onMidi = { midiPicker.launch(arrayOf("*/*")) },
+            )
             is ImportState.Working -> WorkingView(state, onCancel = { ctl.cancel() })
             is ImportState.Review -> ReviewView(app, settings, ctl, state, onSaved = onImported)
             is ImportState.Failed -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -87,18 +93,22 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
 }
 
 @Composable
-private fun IdleView(app: PianoApp, settings: Settings, onAudio: () -> Unit, onScore: () -> Unit, onMidi: () -> Unit) {
+private fun IdleView(app: PianoApp, settings: Settings, avisoServidor: Boolean, onAudio: () -> Unit, onScore: () -> Unit, onMidi: () -> Unit) {
     var url by remember { mutableStateOf(settings.serverUrl) }
     var test by remember { mutableStateOf("") }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(28.dp)) {
         Column(Modifier.weight(1.3f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             OptionCard(G.WAVE, "Audio: MP3, M4A, WAV…", "Convierte una grabación en notas que caen. Funciona mejor con piano solo, y tarda unos segundos por cada minuto de música.", "Elegir un audio", onAudio, PC.right)
-            OptionCard(G.FILE, "Partitura en PDF o foto", "Lee la partitura con reconocimiento óptico musical. Necesita el servidor en casa (a la derecha).", "Elegir PDF o foto", onScore, PC.left)
+            OptionCard(G.FILE, "Partitura en PDF o foto", "Lee la partitura con reconocimiento óptico musical. Necesita el programa «servidor» abierto en un ordenador de tu casa (instrucciones a la derecha).", "Elegir PDF o foto", onScore, PC.left)
             OptionCard(G.NOTE, "Archivo MIDI", "Importación exacta de un .mid, con las dos manos si el archivo las trae separadas. Ideal para obras como el «Claro de luna».", "Elegir un MIDI", onMidi, PC.ok)
         }
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
             SectionTitle("Servidor en casa (para PDF y fotos)")
+            if (avisoServidor && url.isBlank()) {
+                Text("Para leer un PDF o una foto primero escribe aquí abajo la dirección del servidor y pulsa «Probar conexión».", color = PC.left, style = MaterialTheme.typography.bodyMedium)
+                Gap(h = 8.dp)
+            }
             Text("Un pequeño programa en tu ordenador (carpeta «servidor» del proyecto) que lee las partituras. La tablet y el ordenador deben estar en la misma red Wi‑Fi.", color = PC.text2, style = MaterialTheme.typography.bodyMedium)
             Gap(h = 12.dp)
             Box(Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(14.dp)).background(PC.surface2).padding(horizontal = 16.dp), contentAlignment = Alignment.CenterStart) {

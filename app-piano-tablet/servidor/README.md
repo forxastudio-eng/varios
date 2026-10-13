@@ -5,22 +5,36 @@ servidor en tu ordenador de casa, porque el reconocimiento óptico musical (**Au
 
 ## Puesta en marcha (una sola vez)
 
-1. Instala [Docker](https://www.docker.com/products/docker-desktop/) en tu ordenador (Windows, Mac o Linux).
-2. Abre una terminal en esta carpeta (`app-piano-tablet/servidor`) y ejecuta:
+Necesitas un ordenador que esté encendido y conectado a **la misma red Wi‑Fi que la tablet** mientras importas.
 
-   ```
-   docker compose up --build
-   ```
-
-   La primera vez tarda unos minutos (descarga Audiveris). Al terminar verás algo así:
+### Windows (lo más sencillo, sin Docker)
+1. Instala [Python](https://www.python.org/downloads/) (marca la casilla **«Add python.exe to PATH»**).
+2. Descarga esta carpeta `servidor` y haz **doble clic en `iniciar-servidor.bat`**.
+   La primera vez descarga todo lo necesario (unos 150 MB) y tarda unos minutos. Si Windows pregunta por el Firewall, pulsa **«Permitir acceso»**.
+3. Cuando termine verás algo así. **Esa es la dirección que escribirás en la tablet**:
 
    ```
    Servidor de partituras listo. Escribe en la app (Añadir canción → Servidor en casa):
         http://192.168.1.20:8765
    ```
 
-3. En la tablet (misma red Wi‑Fi): **Añadir canción → Servidor en casa**, escribe esa dirección y pulsa **Probar conexión**.
-4. Elige **Partitura en PDF o foto**. Tarda entre 20 s y 2 min según las páginas.
+### Linux (Debian/Ubuntu)
+```
+./iniciar-servidor.sh
+```
+
+### Mac, o si prefieres Docker
+```
+docker compose up --build
+```
+
+### En la tablet
+**Añadir canción → Servidor en casa**: escribe la dirección que mostró el servidor y pulsa **«Probar conexión»**
+(debe salir «✓ Servidor encontrado»). Después elige **Partitura en PDF o foto**. Tarda entre 20 s y 2 min según las páginas.
+La ventana del servidor debe seguir abierta mientras importas.
+
+> Los scripts de arranque de Windows no se han podido probar en un Windows real (sí el de Linux, de principio a fin con un PDF).
+> Si algo falla, copia el mensaje y lo corregimos.
 
 Para usarlo fuera de casa se puede combinar con [Tailscale](https://tailscale.com) (la dirección pasa a ser la de Tailscale).
 

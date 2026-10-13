@@ -117,8 +117,9 @@ class ImportController(private val app: PianoApp) {
         state = ImportState.Working(0f, "Conectando con el servidor…", title)
         exec.execute {
             try {
+                if (serverUrl.isBlank()) throw IllegalStateException("Todavía no has indicado la dirección del servidor. Escríbela en el cuadro «Servidor en casa» (por ejemplo http://192.168.1.20:8765) y pulsa «Probar conexión».")
                 val client = OmrClient(serverUrl)
-                if (!client.health()) throw IllegalStateException("No se encuentra el servidor en $serverUrl. Comprueba que está encendido y en la misma red Wi‑Fi.")
+                if (!client.health()) throw IllegalStateException("No se pudo conectar con el servidor «${serverUrl.trim()}». Comprueba que el programa está abierto en el ordenador, que la tablet y el ordenador están en la misma red Wi‑Fi y que la dirección empieza por http:// y termina en :8765.")
                 val mime = app.contentResolver.getType(uri) ?: "application/pdf"
                 val res = client.convert(app, uri, title + if (mime.contains("pdf")) ".pdf" else ".jpg", mime,
                     onProgress = { p, m -> state = ImportState.Working(p, m, title) }, cancelled = { cancelFlag })
