@@ -2,3 +2,4 @@ entrega/
 
 # Modelos del lector de partituras (se descargan con tools/descargar_modelos_omr.sh; los usa el APK)
 app-piano-tablet/android/app/src/main/assets/omr/*.onnx
+app-piano-tablet/android/.kotlin/
