@@ -166,6 +166,34 @@ class TransposerTest {
     }
 }
 
+class TwoRowsFitTest {
+    private fun check(min: Int, max: Int): Int {
+        val (low, high, m) = KeyboardPlanner.twoRowsFit(min, max)
+        assertEquals(m, low.whiteCount, "fila baja"); assertEquals(m, high.whiteCount, "fila alta")
+        assertFalse(Notes.isBlack(low.lo) || Notes.isBlack(low.hi) || Notes.isBlack(high.lo) || Notes.isBlack(high.hi), "extremos blancos")
+        assertEquals(1, high.lo - low.hi, "el corte no deja ninguna tecla negra suelta ($min..$max)")
+        assertTrue(low.lo <= Notes.whiteAtOrBelow(min) && high.hi >= Notes.whiteAtOrAbove(max), "cubre toda la pieza $min..$max")
+        assertTrue(low.lo >= Notes.MIN && high.hi <= Notes.MAX, "dentro del piano")
+        return m
+    }
+
+    @Test fun fourOctavesGiveFourteenKeysPerRow() {
+        val m = check(45, 88)          // A2 … E6, el rango de «Para Elisa»
+        assertTrue(m in 13..15, "teclas por fila: $m")
+    }
+
+    @Test fun moonlightRange() { assertTrue(check(37, 80) <= 14) }      // C#2 … G#5
+
+    @Test fun extremesStillWork() {
+        assertEquals(26, check(21, 108))     // piano completo
+        check(21, 30); check(100, 108); check(60, 60); check(21, 22)
+    }
+
+    @Test fun everyPossibleRangeIsCoveredWithoutOrphans() {
+        for (lo in 21..100 step 3) for (hi in (lo + 5)..108 step 4) check(lo, hi)
+    }
+}
+
 class KeyboardTest {
     private fun row(lo: Int, hi: Int, w: Float = 1000f) = KeyRow(lo, hi, 0f, 0f, w, 300f)
 

@@ -55,6 +55,7 @@ interface KeyListener {
  */
 class PianoSurfaceView(context: Context) : View(context) {
     var source: FrameSource? = null
+        set(v) { field = v; manualLeft = -1f }
     var listener: KeyListener? = null
     var layoutMode = LayoutMode.REDUCED
         set(v) { field = v; rebuild = true }
@@ -66,6 +67,11 @@ class PianoSurfaceView(context: Context) : View(context) {
     var split = 65
         set(v) { field = v; rebuild = true }
     /** Reduce el teclado a una franja inferior (para vistas previas pequeñas, p. ej. en ajustes o tutorial). */
+    /** Rango (nota más grave y más aguda) de la pieza: con él el modo de dos filas se ajusta a medida. -1 = sin ajuste. */
+    var fitMin = -1
+        set(v) { field = v; rebuild = true }
+    var fitMax = -1
+        set(v) { field = v; rebuild = true }
     var keyboardOnly = false
         set(v) { field = v; rebuild = true }
     var staticLeft: Float = -1f      // si >= 0, ventana fija del teclado reducido
@@ -73,12 +79,11 @@ class PianoSurfaceView(context: Context) : View(context) {
     var showLabelsOverride: KeyLetters? = null
 
     companion object {
-        /** En el modo de 2 filas: (inicio, alto) de la franja central de controles como fracción de la altura. */
-        fun bandFractions(heightScale: Float): Pair<Float, Float> {
-            val kbH = 0.185f * heightScale; val kbL = 0.205f * heightScale; val band = 0.075f
-            val wf = (1f - kbH - kbL - band) / 2f
-            return (wf + kbH) to band
-        }
+        private const val PAN_NONE = 0
+        private const val PAN_WATERFALL = 1
+        private const val PAN_MINIMAP = 2
+        private const val PAN_BUTTON = 3
+        private const val PAN_AUTO = 4
     }
 
     private val density = resources.displayMetrics.density
@@ -109,6 +114,17 @@ class PianoSurfaceView(context: Context) : View(context) {
     private var lastFrameNs = 0L
     private var needLeftArrow = 0
     private var needRightArrow = 0
+
+    // ---- desplazamiento manual del teclado reducido
+    /** >= 0: el usuario ha movido la ventana del teclado a mano (índice de tecla blanca del borde izquierdo); se deja de seguir las notas. */
+    private var manualLeft = -1f
+    private var panId = -1
+    private var panStartX = 0f
+    private var panStartLeft = 0f
+    private var panMoved = false
+    private var panKind = PAN_NONE      // qué se está arrastrando: la cascada, el minimapa o un botón lateral
+    private var panButton = 0           // -1 botón izquierdo, +1 botón derecho
+    private val slop = dp(8f)
 
     // ---- pinturas reutilizables
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -166,19 +182,25 @@ class PianoSurfaceView(context: Context) : View(context) {
             val kb = reducedRow(0f, h - kbH, w, kbH, bw)
             rows.add(RowGeom(kb, 0f, 0f, false))
             topInset = 0f; bandTop = 0f; bandBottom = 0f
-        } else if (layoutMode == LayoutMode.TWO_ROWS) {
-            val (low, high) = KeyboardPlanner.twoRows(split)
-            val kbH = h * 0.185f * hs
-            val kbHLow = h * 0.205f * hs
-            val band = h * 0.075f
-            val wf = (h - kbH - kbHLow - band) / 2f
-            val hiKb = KeyRow(high.lo, high.hi, 0f, wf, w, kbH, bw, 0.62f)
-            val loKb = KeyRow(low.lo, low.hi, 0f, wf + kbH + band + wf, w, kbHLow, bw, 0.62f)
-            rows.add(RowGeom(hiKb, 0f, wf, true))
-            rows.add(RowGeom(loKb, wf + kbH + band, wf + kbH + band + wf, true))
-            topInset = 0f
-            bandTop = wf + kbH
-            bandBottom = bandTop + band
+        } else if (layoutMode != LayoutMode.REDUCED) {
+            val (low, high) = if (layoutMode == LayoutMode.TWO_ROWS && fitMin >= 0 && fitMax >= fitMin) {
+                KeyboardPlanner.twoRowsFit(fitMin, fitMax).let { it.first to it.second }
+            } else KeyboardPlanner.twoRows(split)
+            val top = dp(54f)                          // barra de controles arriba, igual que en el teclado reducido
+            val bottomMargin = dp(10f)                 // la palma al tocar abajo no debe activar los gestos del borde
+            val avail = h - top - bottomMargin
+            val kb = min(avail * 0.235f * hs, avail * 0.36f)   // teclas más altas que antes (casi 4 cm en la Tab S8 Ultra)
+            val gap = dp(6f)
+            val wf = (avail - 2f * kb - gap) / 2f
+            val hiY = top + wf
+            val loWfTop = hiY + kb + gap
+            val loY = loWfTop + wf
+            val hiKb = KeyRow(high.lo, high.hi, 0f, hiY, w, kb, bw, 0.62f)
+            val loKb = KeyRow(low.lo, low.hi, 0f, loY, w, kb, bw, 0.62f)
+            rows.add(RowGeom(hiKb, top, hiY, true))
+            rows.add(RowGeom(loKb, loWfTop, loY, true))
+            topInset = top
+            bandTop = 0f; bandBottom = 0f
         } else {
             val kbH = h * 0.30f * hs
             val top = dp(54f)
@@ -219,7 +241,7 @@ class PianoSurfaceView(context: Context) : View(context) {
         lastFrameNs = nowNs
         // desplazamiento suave de la ventana del teclado reducido
         if (!keyboardOnly && layoutMode == LayoutMode.REDUCED) {
-            val target = if (staticLeft >= 0f) staticLeft else (source?.followLeft ?: 23f)
+            val target = if (manualLeft >= 0f) manualLeft else if (staticLeft >= 0f) staticLeft else (source?.followLeft ?: 23f)
             val tl = KeyboardPlanner.clampLeft(target, reducedSpan)
             curLeft = if (curLeft < 0f) tl else curLeft + (tl - curLeft) * (1f - exp(-dt * 5f))
             if (abs(curLeft - lastBuiltLeft) > 0.002f) rebuild = true
@@ -400,9 +422,63 @@ class PianoSurfaceView(context: Context) : View(context) {
             }
         }
         // flechas de los bordes (teclado reducido)
-        if (needLeftArrow != 0) drawArrow(c, dp(26f), top + hgt * 0.5f, -1, needLeftArrow)
-        if (needRightArrow != 0) drawArrow(c, width - dp(26f), top + hgt * 0.5f, 1, needRightArrow)
+        if (canPan()) {
+            for (side in intArrayOf(-1, 1)) {
+                buttonRect(side, top, hgt, rf)
+                val need = if (side < 0) needLeftArrow else needRightArrow
+                p.style = Paint.Style.FILL
+                p.color = if (need != 0) Palette.withAlpha(need, 0.28f) else 0x55000000
+                c.drawRoundRect(rf, rf.width() / 2f, rf.width() / 2f, p)
+                p.style = Paint.Style.STROKE; p.strokeWidth = dp(1.5f)
+                p.color = if (need != 0) Palette.withAlpha(need, 0.9f) else 0x40FFFFFF
+                c.drawRoundRect(rf, rf.width() / 2f, rf.width() / 2f, p)
+                p.style = Paint.Style.FILL
+                drawArrow(c, rf.centerX(), rf.centerY(), side, if (need != 0) need else 0xCCFFFFFF.toInt())
+            }
+            if (manualLeft >= 0f) {
+                autoRect.set(width / 2f - dp(100f), top + dp(10f), width / 2f + dp(100f), top + dp(46f))
+                p.style = Paint.Style.FILL; p.color = 0xCC1D2433.toInt()
+                c.drawRoundRect(autoRect, dp(18f), dp(18f), p)
+                p.style = Paint.Style.STROKE; p.strokeWidth = dp(1.5f); p.color = 0xFF5AB8FF.toInt()
+                c.drawRoundRect(autoRect, dp(18f), dp(18f), p)
+                p.style = Paint.Style.FILL
+                tp.color = 0xFFFFFFFF.toInt(); tp.textSize = dp(14f)
+                c.drawText("Seguir las notas", autoRect.centerX(), autoRect.centerY() + tp.textSize * 0.35f, tp)
+            }
+        }
         c.restore()
+    }
+
+    private val autoRect = RectF()
+
+    /** El desplazamiento a mano solo existe en el teclado reducido de las pantallas de práctica. */
+    private fun canPan() = layoutMode == LayoutMode.REDUCED && !keyboardOnly && rows.isNotEmpty()
+
+    private fun buttonRect(side: Int, top: Float, hgt: Float, out: RectF) {
+        val rad = dp(30f)
+        val cy = top + hgt * 0.62f
+        val cx = if (side < 0) dp(12f) + rad else width - dp(12f) - rad
+        out.set(cx - rad, cy - rad, cx + rad, cy + rad)
+    }
+
+    private fun hitButton(x: Float, y: Float): Int {
+        val r0 = rows.firstOrNull() ?: return 0
+        val top = r0.wfTop; val hgt = r0.wfBottom - r0.wfTop
+        for (side in intArrayOf(-1, 1)) { buttonRect(side, top, hgt, rf2); if (rf2.contains(x, y)) return side }
+        return 0
+    }
+
+    private fun inMiniMap(y: Float) = y >= dp(50f) && y <= dp(74f)
+
+    private fun miniMapLeft(x: Float): Float {
+        val wk = (width - dp(48f)) / Notes.WHITE_KEYS
+        return (x - dp(24f)) / wk - reducedSpan / 2f
+    }
+
+    private fun setManual(left: Float) {
+        manualLeft = KeyboardPlanner.clampLeft(left, reducedSpan)
+        // el movimiento con el dedo es inmediato; el de los botones se suaviza en updateLights
+        if (panKind != PAN_BUTTON) { curLeft = manualLeft; rebuild = true }
     }
 
     private fun drawGlow(c: Canvas, cx: Float, cy: Float, radius: Float, color: Int, amt: Float) {
@@ -516,8 +592,8 @@ class PianoSurfaceView(context: Context) : View(context) {
 
     private fun drawMiniMap(c: Canvas, pos: Double, src: FrameSource?) {
         if (rows.isEmpty()) return
-        val y = dp(30f)
-        val hh = dp(12f)
+        val y = dp(57f)
+        val hh = dp(11f)
         val mw = width - dp(48f)
         val x0 = dp(24f)
         val wk = mw / Notes.WHITE_KEYS
@@ -564,9 +640,13 @@ class PianoSurfaceView(context: Context) : View(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val idx = e.actionIndex
-                press(e, idx, l)
+                if (!startPan(e, idx)) press(e, idx, l)
             }
             MotionEvent.ACTION_MOVE -> {
+                if (panId >= 0) {
+                    val i = e.findPointerIndex(panId)
+                    if (i >= 0) movePan(e.getX(i), e.getY(i))
+                }
                 if (keyboardSettings.slide) {
                     for (i in 0 until e.pointerCount) {
                         val id = e.getPointerId(i)
@@ -585,14 +665,59 @@ class PianoSurfaceView(context: Context) : View(context) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
                 val idx = e.actionIndex
                 val id = e.getPointerId(idx)
-                if (id < ptrPitch.size && ptrPitch[id] >= 0) { val pit = ptrPitch[id]; ptrPitch[id] = -1; release(pit, l) }
+                if (id == panId) endPan(e.getX(idx), e.getY(idx))
+                else if (id < ptrPitch.size && ptrPitch[id] >= 0) { val pit = ptrPitch[id]; ptrPitch[id] = -1; release(pit, l) }
                 if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
             }
             MotionEvent.ACTION_CANCEL -> {
+                panId = -1; panKind = PAN_NONE
                 for (i in ptrPitch.indices) if (ptrPitch[i] >= 0) { val pit = ptrPitch[i]; ptrPitch[i] = -1; release(pit, l) }
             }
         }
         return true
+    }
+
+    /** Empieza un arrastre si el dedo cae sobre la cascada, el minimapa o un botón lateral. Devuelve true si lo consume. */
+    private fun startPan(e: MotionEvent, idx: Int): Boolean {
+        if (!canPan() || panId >= 0) return false
+        val x = e.getX(idx); val y = e.getY(idx)
+        val kind: Int
+        when {
+            manualLeft >= 0f && autoRect.contains(x, y) -> { kind = PAN_AUTO }
+            hitButton(x, y) != 0 -> { kind = PAN_BUTTON; panButton = hitButton(x, y) }
+            inMiniMap(y) -> kind = PAN_MINIMAP
+            pitchAt(x, y) == null && y < rows[0].wfBottom -> kind = PAN_WATERFALL
+            else -> return false
+        }
+        panId = e.getPointerId(idx); panKind = kind; panStartX = x; panMoved = false
+        panStartLeft = if (curLeft >= 0f) curLeft else 23f
+        if (kind == PAN_MINIMAP) { setManual(miniMapLeft(x)); panMoved = true }
+        return true
+    }
+
+    private fun movePan(x: Float, y: Float) {
+        if (panKind == PAN_MINIMAP) { setManual(miniMapLeft(x)); return }
+        if (panKind != PAN_WATERFALL) return
+        val dx = x - panStartX
+        if (!panMoved && abs(dx) < slop) return
+        panMoved = true
+        val wk = (width / reducedSpan.toFloat()).coerceAtLeast(1f)
+        setManual(panStartLeft - dx / wk)      // el teclado sigue al dedo, como arrastrar un papel
+    }
+
+    private fun endPan(x: Float, y: Float) {
+        val kind = panKind
+        panId = -1; panKind = PAN_NONE
+        when (kind) {
+            PAN_AUTO -> if (autoRect.contains(x, y)) manualLeft = -1f
+            PAN_BUTTON -> if (hitButton(x, y) == panButton) {
+                val base = if (manualLeft >= 0f) manualLeft else curLeft.takeIf { it >= 0f } ?: 23f
+                panKind = PAN_BUTTON
+                setManual(base + panButton * 7f)   // una octava (7 teclas blancas)
+                panKind = PAN_NONE
+            }
+            else -> {}
+        }
     }
 
     override fun performClick(): Boolean { super.performClick(); return true }

@@ -142,7 +142,7 @@ fun SongDetailScreen(
                 }
                 Gap(h = 22.dp)
                 SectionTitle("Teclado")
-                Segmented(listOf(LayoutMode.REDUCED to "Reducido", LayoutMode.TWO_ROWS to "88 teclas en 2 filas"), layout, { layout = it })
+                Segmented(listOf(LayoutMode.TWO_ROWS to "2 filas a medida", LayoutMode.REDUCED to "1 fila deslizable", LayoutMode.FULL_88 to "Piano 88"), layout, { layout = it })
                 if (plan.shift != 0 && plan.helps) {
                     Gap(h = 10.dp)
                     SwitchRow(

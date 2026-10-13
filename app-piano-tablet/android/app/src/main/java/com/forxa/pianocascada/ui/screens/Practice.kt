@@ -90,26 +90,9 @@ fun PracticeScreen(app: PianoApp, params: PracticeParams, settings: Settings, on
 
     val layout = params.layout
     Box(Modifier.fillMaxSize().background(PC.bg)) {
-        PianoHost(settings, controller, controller, Modifier.fillMaxSize(), layout = layout)
-        if (layout == LayoutMode.TWO_ROWS) {
-            val (bandTop, bandH) = PianoSurfaceView.bandFractions(settings.keyboard.heightScale)
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val top = maxHeight * bandTop
-                val h = maxHeight * bandH
-                Row(Modifier.offset(y = top).height(h).fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Controls(controller, song?.title ?: "", onExit = { controller.pause(); onExit() }, onSettings = { controller.pause(); showSettings = true }, big = true, withTitle = false)
-                }
-                // título y progreso discretos arriba
-                Row(Modifier.padding(12.dp).align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
-                    Text(song?.title ?: "", color = PC.text2, style = MaterialTheme.typography.labelLarge)
-                    Gap(w = 16.dp)
-                    Text(controller.barText, color = PC.text3, style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        } else {
-            Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Controls(controller, song?.title ?: "", onExit = { controller.pause(); onExit() }, onSettings = { controller.pause(); showSettings = true }, big = false, withTitle = true)
-            }
+        PianoHost(settings, controller, controller, Modifier.fillMaxSize(), layout = layout, fitRange = song?.let { it.minPitch..it.maxPitch })
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Controls(controller, song?.title ?: "", onExit = { controller.pause(); onExit() }, onSettings = { controller.pause(); showSettings = true }, big = false, withTitle = true)
         }
         if (controller.waiting && controller.mode == PracticeMode.WAIT) {
             Box(Modifier.align(Alignment.TopCenter).padding(top = 76.dp).clip(RoundedCornerShape(20.dp)).background(PC.surface2).padding(horizontal = 18.dp, vertical = 8.dp)) {

@@ -6,7 +6,8 @@ import com.forxa.pianocascada.core.CurveKind
 import org.json.JSONArray
 import org.json.JSONObject
 
-enum class LayoutMode { REDUCED, TWO_ROWS }
+/** REDUCED: una fila que se desliza · TWO_ROWS: dos filas a medida de la pieza · FULL_88: el piano entero en dos filas. */
+enum class LayoutMode { REDUCED, TWO_ROWS, FULL_88 }
 enum class KeyLetters { ALL, C_ONLY, NONE }
 enum class ColorScheme { BY_HAND, BY_NOTE, BY_OCTAVE, MONO }
 
@@ -45,7 +46,7 @@ data class KeyboardSettings(
     val heightScale: Float = 1f, val blackWidth: Float = 0.62f,
     val slide: Boolean = false, val palmReject: Boolean = true,
     val calibMin: Float = 0f, val calibMax: Float = 0f,                   // tamaño de contacto (0 = autocalibrado)
-    val layout: LayoutMode = LayoutMode.REDUCED, val reducedSpan: Int = 15, val split: Int = 65,
+    val layout: LayoutMode = LayoutMode.TWO_ROWS, val reducedSpan: Int = 15, val split: Int = 65,
 )
 
 data class DisplaySettings(

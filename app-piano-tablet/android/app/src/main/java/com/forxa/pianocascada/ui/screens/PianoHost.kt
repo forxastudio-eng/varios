@@ -20,6 +20,7 @@ fun PianoHost(
     layout: LayoutMode = settings.keyboard.layout,
     keyboardOnly: Boolean = false,
     staticLeft: Float = -1f,
+    fitRange: IntRange? = null,
     highlight: IntArray = IntArray(0),
     span: Int = settings.keyboard.reducedSpan,
     labels: KeyLetters? = null,
@@ -38,6 +39,8 @@ fun PianoHost(
             if (v.split != settings.keyboard.split) v.split = settings.keyboard.split
             if (v.keyboardOnly != keyboardOnly) v.keyboardOnly = keyboardOnly
             v.staticLeft = staticLeft
+            v.fitMin = fitRange?.first ?: -1
+            v.fitMax = fitRange?.last ?: -1
             v.highlight = highlight
             v.showLabelsOverride = labels
         },

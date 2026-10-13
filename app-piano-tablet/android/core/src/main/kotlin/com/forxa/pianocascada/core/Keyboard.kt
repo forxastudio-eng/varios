@@ -105,6 +105,39 @@ object KeyboardPlanner {
     }
 
     /**
+     * Dos filas **a medida de la pieza**: cubren justo el rango [minPitch]..[maxPitch] y no las 88 teclas.
+     * Las dos filas tienen el mismo número de teclas blancas, así que son del mismo tamaño y llenan todo el ancho
+     * de la pantalla: una pieza de 4 octavas da 14 teclas por fila, de unos 2,2 cm en una tablet de 14,6 pulgadas
+     * (casi como un piano de verdad), mientras que las 88 teclas en dos filas dan teclas de 1,2 cm.
+     * El corte entre filas cae donde no hay tecla negra (entre E y F o entre B y C) para no dejar ninguna huérfana.
+     * Devuelve (fila de abajo = graves, fila de arriba = agudos) y el número de teclas blancas por fila.
+     */
+    fun twoRowsFit(minPitch: Int, maxPitch: Int, minWhitePerRow: Int = 9): Triple<PitchRange, PitchRange, Int> {
+        val a = Notes.whiteIndex(Notes.whiteAtOrBelow(Notes.clampPiano(minPitch)))
+        val b = Notes.whiteIndex(Notes.whiteAtOrAbove(Notes.clampPiano(maxPitch)))
+        val total = Notes.WHITE_KEYS
+        fun cutOk(c: Int) = c in 1 until total && Notes.pitchOfWhiteIndex(c) - Notes.pitchOfWhiteIndex(c - 1) == 1
+        val n = maxOf(1, b - a + 1)
+        for (m in maxOf(minWhitePerRow, (n + 1) / 2)..26) {
+            var best = -1
+            var bestBalance = Int.MAX_VALUE
+            for (c in m until total - m + 1) {
+                if (!cutOk(c) || c - m > a || c + m - 1 < b) continue
+                val balance = kotlin.math.abs((c - a) - (b - c + 1))
+                if (balance < bestBalance) { bestBalance = balance; best = c }
+            }
+            if (best >= 0) return rowsFor(best, m)
+        }
+        return rowsFor(26, 26)       // las 88 teclas: corte en F4/E4
+    }
+
+    private fun rowsFor(cut: Int, m: Int): Triple<PitchRange, PitchRange, Int> = Triple(
+        PitchRange(Notes.pitchOfWhiteIndex(cut - m), Notes.pitchOfWhiteIndex(cut - 1)),
+        PitchRange(Notes.pitchOfWhiteIndex(cut), Notes.pitchOfWhiteIndex(cut + m - 1)),
+        m,
+    )
+
+    /**
      * Ventana del teclado reducido: [spanWhite] teclas blancas centradas en el rango de la canción.
      * Devuelve el índice de tecla blanca global del borde izquierdo (se anima en la vista).
      */
