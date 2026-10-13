@@ -58,6 +58,10 @@ jobs:
           working-directory: app-piano-tablet/android
           script: ./gradlew :app:connectedDebugAndroidTest -PemulatorAbi=x86_64 --no-daemon --console=plain
 
+      - name: Bibliotecas nativas del APK de pruebas
+        if: always()
+        run: unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/" || true
+
       - name: Guardar los informes de la prueba
         if: always()
         uses: actions/upload-artifact@v4

@@ -33,8 +33,13 @@ class ScoreReader(private val context: Context) {
 
         @Synchronized fun loadOpenCv() {
             if (openCvLoaded) return
-            try { System.loadLibrary("opencv_java4") } catch (e: UnsatisfiedLinkError) {
-                throw IllegalStateException("No se pudo cargar OpenCV en este dispositivo")
+            val abis = android.os.Build.SUPPORTED_ABIS.joinToString()
+            try {
+                // OpenCV necesita la biblioteca C++ compartida; se carga antes por si el sistema no la encuentra sola
+                runCatching { System.loadLibrary("c++_shared") }
+                System.loadLibrary("opencv_java4")
+            } catch (e: UnsatisfiedLinkError) {
+                throw IllegalStateException("No se pudo cargar OpenCV en este dispositivo ($abis): ${e.message}")
             }
             openCvLoaded = true
         }
