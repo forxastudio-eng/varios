@@ -82,7 +82,7 @@ fun PracticeScreen(app: PianoApp, params: PracticeParams, settings: Settings, on
     Box(Modifier.fillMaxSize().background(PC.bg)) {
         PianoHost(settings, controller, controller, Modifier.fillMaxSize(), layout = LayoutMode.FULL_88,
             onSpace = { d -> if (d != controller.pedal) controller.holdPedal(d) }, onEnter = { controller.togglePlay() }, onRestart = { controller.restart() },
-            startOctave = song?.let { (((it.minPitch + it.maxPitch) / 2 - 7) / 12 - 1).coerceIn(1, 6) } ?: 4)
+            startOctave = song?.let { sg -> sg.notes(params.level).take(12).map { it.pitch }.sorted().let { p -> if (p.isEmpty()) 4 else ((p[p.size / 2] - 7) / 12 - 1).coerceIn(1, 6) } } ?: 4)
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Controls(controller, song?.title ?: "", onExit = { controller.pause(); onExit() }, onSettings = { controller.pause(); showSettings = true }, big = false, withTitle = true)
         }
