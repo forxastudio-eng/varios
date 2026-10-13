@@ -100,6 +100,13 @@ fun HomeScreen(
             GhostButton("Añadir canción (MP3, PDF, MIDI)", onImport)
             GhostButton("Repetir el tutorial", onTutorial)
         }
+        Gap(h = 14.dp)
+        val midi = com.forxa.pianocascada.piano.MidiRouter.devices
+        Text(
+            (if (midi.isNotEmpty()) "Piano MIDI conectado: ${midi.joinToString()} · " else "") +
+                "Teclado del ordenador: Z X C V B N M = do re mi fa sol la si · ← → cambian de octava · Espacio = pedal · Esc = volver · F11 = pantalla completa",
+            color = PC.text3, style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 

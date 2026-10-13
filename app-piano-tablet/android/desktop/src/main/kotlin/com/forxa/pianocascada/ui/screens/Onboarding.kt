@@ -93,11 +93,11 @@ fun OnboardingScreen(app: PianoApp, settings: Settings, onFinish: (startSongId: 
 private fun StepText(step: Int) {
     val (title, body) = when (step) {
         0 -> "Bienvenido" to "Vas a aprender a tocar el piano viendo cómo caen las notas.\n\nCada barra es una nota: cuanto más larga, más tiempo debes mantener la tecla. Cuando llega abajo, la tocas.\n\nEste tutorial dura unos 5 minutos y no necesitas saber música."
-        1 -> "Coloca la tablet" to "Ponla en horizontal sobre una mesa o un atril, a la altura de tus codos.\n\nSiéntate recto, con los brazos relajados y las muñecas al nivel del teclado.\n\nPuedes tocar con los dedos de las dos manos: la pantalla detecta hasta 10 a la vez."
-        2 -> "Tu primera tecla" to "Toca cualquier tecla.\n\nVerás cómo se ilumina y oirás un piano de cola de verdad. Prueba también varias a la vez."
+        1 -> "Cómo vas a tocar" to "Puedes tocar de tres formas:\n\n• Con el ratón: haz clic en las teclas.\n• Con el teclado del ordenador: Z X C V B N M son do re mi fa sol la si, y Q W E R T Y U la octava de arriba (S D G H J y 2 3 5 6 7 son las negras). Las flechas ← → cambian de octava.\n• Con un piano o teclado MIDI conectado por USB: se detecta solo, incluido el pedal.\n\nUsa auriculares si puedes: el sonido mejora mucho."
+        2 -> "Tu primera tecla" to "Pulsa cualquier tecla con el ratón o con el teclado del ordenador.\n\nVerás cómo se ilumina y oirás un piano de cola de verdad. Con el teclado del ordenador puedes pulsar varias a la vez."
         3 -> "El mapa del teclado" to "Las teclas negras forman grupos de 2 y de 3. Eso te sirve para orientarte.\n\nLa nota C está justo a la izquierda de cada grupo de 2 teclas negras. Las tienes marcadas con luz.\n\nToca una C."
         4 -> "Las letras de las notas" to "Las notas se llaman con letras: C D E F G A B.\n\nToca en orden C, D, E, F, G: son las 5 teclas blancas seguidas, empezando por la C. Las que debes tocar brillan."
-        5 -> "Calibra tu toque" to "El piano detecta cuánto presionas por el tamaño de tu dedo en la pantalla.\n\nPrimero toca varias teclas muy suave, con la yema. Después varias fuerte, con el dedo más plano."
+        5 -> "Fuerza al pulsar" to "Con el ratón, cuanto más abajo pulses la tecla, más fuerte suena; arriba, más suave. Con un teclado MIDI suena según la fuerza con la que toques.\n\nCon el teclado del ordenador todas las notas suenan igual (puedes cambiarlo en Ajustes).\n\nPrueba a pulsar arriba y abajo de una misma tecla."
         6 -> "Así caen las notas" to "Mira las barras que bajan: cuando una llegue a la línea luminosa, toca su tecla.\n\nEn el modo Espera la música se detiene hasta que aciertas, así nunca te pierdes.\n\nToca C, D, E, F, G."
         7 -> "Notas largas" to "La primera barra es larga: debes mantener la tecla pulsada mientras la barra pasa por la línea.\n\nLas barras cortas son notas rápidas.\n\nMantén la C y luego toca la G."
         else -> "¡Listo!" to "Ya sabes lo básico. Tu biblioteca tiene dos obras maestras para aprender: Para Elisa y el Claro de luna, con la melodía sola, con el bajo y con las dos manos.\n\nEmpieza con Para Elisa y el nivel 1: solo la melodía."
@@ -143,7 +143,7 @@ private fun StepArea(app: PianoApp, settings: Settings, step: Int, onDone: () ->
                 Text("$idx / ${seq.size}", color = PC.text1, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
             }
         }
-        5 -> CalibrationStep(app, settings, onDone)
+        5 -> FreePlayStep(app, settings, highlight = IntArray(0), accept = { _ -> true }, onDone = onDone)
         6 -> {
             val song = remember {
                 SongLibrary.simple("tut1", "Tutorial", 60, listOf(60, 62, 64, 65, 67).mapIndexed { i, p -> SongNote(i * 1f + 1f, 0.8f, p, Hand.RIGHT) })

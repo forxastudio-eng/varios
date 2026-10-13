@@ -114,7 +114,7 @@ private fun SoundTab(s: Settings, edit: ((com.forxa.pianocascada.data.SoundSetti
         Column(Modifier.weight(1f)) {
             LabeledSlider("Volumen", snd.master, 0f..1f, { v -> edit { it.copy(master = v) } }, { "%.0f".format(it * 100) + " %" })
             SwitchRow("Modo noche", snd.night, { v -> edit { it.copy(night = v) } }, "Suaviza el volumen y el brillo para tocar bajito")
-            SwitchRow("Perfil de altavoces de la tablet", snd.speaker, { v -> edit { it.copy(speaker = v) } }, "Quita graves inútiles y realza la presencia; desactívalo con auriculares")
+            SwitchRow("Perfil de altavoces del portátil", snd.speaker, { v -> edit { it.copy(speaker = v) } }, "Quita graves inútiles y realza la presencia; desactívalo con auriculares")
         }
     }
     Gap(h = 14.dp)
@@ -178,9 +178,9 @@ private fun KeyboardTab(s: Settings, edit: ((com.forxa.pianocascada.data.Keyboar
         }
     }
     Gap(h = 22.dp)
-    SectionTitle("Respuesta al toque")
+    SectionTitle("Fuerza de las notas")
     Segmented(listOf(CurveKind.SOFT to "Suave", CurveKind.NORMAL to "Normal", CurveKind.HARD to "Dura", CurveKind.FIXED to "Fija"), k.curve, { v -> edit { it.copy(curve = v) } })
-    Text("Mide el tamaño de tu dedo en la pantalla: más superficie = nota más fuerte. «Fija» suena siempre igual.", color = PC.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+    Text("Con el ratón, pulsar más abajo en la tecla = nota más fuerte. Con un teclado MIDI se usa tu fuerza real. «Fija» suena siempre igual.", color = PC.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
     if (k.curve == CurveKind.FIXED) LabeledSlider("Velocidad fija", k.fixedVelocity.toFloat(), 20f..127f, { v -> edit { it.copy(fixedVelocity = Math.round(v)) } }, { "%.0f".format(it) })
     Gap(h = 14.dp)
     SectionTitle("Sensibilidad por zonas del teclado")

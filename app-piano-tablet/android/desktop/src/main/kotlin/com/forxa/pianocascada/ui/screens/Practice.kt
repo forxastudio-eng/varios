@@ -80,7 +80,8 @@ fun PracticeScreen(app: PianoApp, params: PracticeParams, settings: Settings, on
 
     val layout = params.layout
     Box(Modifier.fillMaxSize().background(PC.bg)) {
-        PianoHost(settings, controller, controller, Modifier.fillMaxSize(), layout = layout, fitRange = song?.let { it.minPitch..it.maxPitch })
+        PianoHost(settings, controller, controller, Modifier.fillMaxSize(), layout = layout, fitRange = song?.let { it.minPitch..it.maxPitch },
+            onSpace = { d -> if (d != controller.pedal) controller.holdPedal(d) }, onEnter = { controller.togglePlay() })
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Controls(controller, song?.title ?: "", onExit = { controller.pause(); onExit() }, onSettings = { controller.pause(); showSettings = true }, big = false, withTitle = true)
         }
@@ -242,7 +243,7 @@ fun FreePianoScreen(app: PianoApp, settings: Settings, onExit: () -> Unit) {
     LaunchedEffect(settings) { controller.updateSettings(settings); applySound(app.audio, settings.sound) }
     BackHandler { if (showSettings) showSettings = false else onExit() }
     Box(Modifier.fillMaxSize().background(PC.bg)) {
-        PianoHost(settings, controller, controller, Modifier.fillMaxSize())
+        PianoHost(settings, controller, controller, Modifier.fillMaxSize(), onSpace = { d -> if (d != controller.pedal) controller.holdPedal(d) })
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Controls(controller, "Piano libre", onExit = onExit, onSettings = { showSettings = true }, big = false, withTitle = false)
         }
