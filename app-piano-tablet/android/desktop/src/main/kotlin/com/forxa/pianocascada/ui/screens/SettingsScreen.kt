@@ -156,27 +156,8 @@ private fun SoundTab(s: Settings, edit: ((com.forxa.pianocascada.data.SoundSetti
 @Composable
 private fun KeyboardTab(s: Settings, edit: ((com.forxa.pianocascada.data.KeyboardSettings) -> com.forxa.pianocascada.data.KeyboardSettings) -> Unit) {
     val k = s.keyboard
-    SectionTitle("Disposición")
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-        Column(Modifier.weight(1f)) {
-            Segmented(listOf(LayoutMode.TWO_ROWS to "2 filas a medida", LayoutMode.REDUCED to "1 fila deslizable", LayoutMode.FULL_88 to "Piano 88"), k.layout, { v -> edit { it.copy(layout = v) } })
-            Text(
-                when (k.layout) {
-                    LayoutMode.TWO_ROWS -> "Recomendado. Solo las teclas que usa la canción, en dos filas (graves abajo, agudos arriba): salen del tamaño de un piano de verdad."
-                    LayoutMode.REDUCED -> "Una sola fila de teclas grandes. Se desplaza sola hacia las notas que vienen, y tú puedes arrastrar la cascada, el mapa de arriba o usar los botones laterales."
-                    LayoutMode.FULL_88 -> "Las 88 teclas partidas en dos filas iguales (corte entre E4 y F4). Las teclas son pequeñas (≈ 1,2 cm)."
-                },
-                color = PC.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-        Column(Modifier.weight(1f)) {
-            if (k.layout == LayoutMode.REDUCED) {
-                Segmented(listOf(15 to "2 octavas", 22 to "3 octavas", 29 to "4 octavas"), k.reducedSpan, { v -> edit { it.copy(reducedSpan = v) } })
-            } else if (k.layout == LayoutMode.FULL_88) {
-                Segmented(listOf(60 to "Corte en C4", 65 to "Corte en F4", 67 to "Corte en G4"), k.split, { v -> edit { it.copy(split = v) } })
-            }
-        }
-    }
+    SectionTitle("Teclado")
+    Text("En el ordenador se ve siempre el piano entero (las 88 teclas) en una sola fila. Con el teclado del ordenador: la fila de en medio (A S D F G H J K L) son las teclas blancas y la de arriba (W E T Y U O P) las negras; Z y X bajan y suben de octava; Espacio es el pedal.", color = PC.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
     Gap(h = 22.dp)
     SectionTitle("Fuerza de las notas")
     Segmented(listOf(CurveKind.SOFT to "Suave", CurveKind.NORMAL to "Normal", CurveKind.HARD to "Dura", CurveKind.FIXED to "Fija"), k.curve, { v -> edit { it.copy(curve = v) } })

@@ -58,7 +58,7 @@ fun SongDetailScreen(
     var hands by remember(song.id) { mutableStateOf(HandsMode.BOTH) }
     var mode by remember(song.id) { mutableStateOf(PracticeMode.WAIT) }
     var speed by remember(song.id) { mutableStateOf(settings.speed) }
-    var layout by remember(song.id) { mutableStateOf(settings.keyboard.layout) }
+    val layout = LayoutMode.FULL_88      // en el ordenador siempre se ve el piano entero, en una sola fila
     val plan = remember(song.id) { Transposer.bestWhiteKeyShift((song.rh + song.lh + (song.melody ?: emptyList())).map { it.pitch }) }
     var white by remember(song.id) { mutableStateOf(plan.allWhite && plan.shift != 0) }
     val effHands = if (level == 1) HandsMode.RIGHT else hands
@@ -140,9 +140,6 @@ fun SongDetailScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     for (v in listOf(0.5f, 0.7f, 0.85f, 1f)) Chip("${(v * 100).toInt()} %", speed == v, { speed = v })
                 }
-                Gap(h = 22.dp)
-                SectionTitle("Teclado")
-                Segmented(listOf(LayoutMode.TWO_ROWS to "2 filas a medida", LayoutMode.REDUCED to "1 fila deslizable", LayoutMode.FULL_88 to "Piano 88"), layout, { layout = it })
                 if (plan.shift != 0 && plan.helps) {
                     Gap(h = 10.dp)
                     SwitchRow(

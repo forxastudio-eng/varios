@@ -27,9 +27,11 @@ fun PianoHost(
     labels: KeyLetters? = null,
     onSpace: ((Boolean) -> Unit)? = null,
     onEnter: (() -> Unit)? = null,
+    onRestart: (() -> Unit)? = null,
+    startOctave: Int = 4,
     onState: ((PianoState) -> Unit)? = null,
 ) {
-    val v = remember { PianoState().also { onState?.invoke(it) } }
+    val v = remember { PianoState().also { it.pcOctave = startOctave; onState?.invoke(it) } }
     if (v.source !== source) v.source = source
     if (v.listener !== listener) v.listener = listener
     v.layoutMode = layout
@@ -43,5 +45,6 @@ fun PianoHost(
     v.fitMax = fitRange?.last ?: -1
     v.highlight = highlight
     v.showLabelsOverride = labels
-    PianoView(v, modifier, onSpace, onEnter)
+    v.pcHints = listener != null
+    PianoView(v, modifier, onSpace, onEnter, onRestart)
 }

@@ -104,7 +104,7 @@ fun HomeScreen(
         val midi = com.forxa.pianocascada.piano.MidiRouter.devices
         Text(
             (if (midi.isNotEmpty()) "Piano MIDI conectado: ${midi.joinToString()} · " else "") +
-                "Teclado del ordenador: Z X C V B N M = do re mi fa sol la si · ← → cambian de octava · Espacio = pedal · Esc = volver · F11 = pantalla completa",
+                "Teclado del ordenador: A S D F G H J K L = teclas blancas, W E T Y U O P = negras · Z / X = octava · Espacio = pedal · Intro = pausa · R = reiniciar · Esc = volver · F11 = pantalla completa",
             color = PC.text3, style = MaterialTheme.typography.bodySmall,
         )
     }

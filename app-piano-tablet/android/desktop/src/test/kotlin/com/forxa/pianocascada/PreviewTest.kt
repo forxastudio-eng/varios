@@ -52,11 +52,11 @@ class PreviewTest {
         shoot(app, "04-onboarding", Screen.Onboarding)
         shoot(app, "05-ajustes", Screen.Settings)
         shoot(app, "06-importar", Screen.Import)
-        for ((tag, layout) in listOf("reducido" to LayoutMode.REDUCED, "dos-filas" to LayoutMode.TWO_ROWS)) {
+        for ((tag, size) in listOf("1366" to (1366 to 860), "1920" to (1920 to 1080))) {
             var ctrl: PracticeController? = null
             app.onPracticeController = { ctrl = it }
-            val params = PracticeParams(first.id, 1, HandsMode.BOTH, PracticeMode.LISTEN, 1f, false, layout)
-            shoot(app, "07-practica-$tag", Screen.Practice(params), seconds = 7.0, afterFirst = { ctrl?.play() })
+            val params = PracticeParams(first.id, 1, HandsMode.BOTH, PracticeMode.LISTEN, 1f, false, LayoutMode.FULL_88)
+            shoot(app, "07-practica-$tag", Screen.Practice(params), seconds = 7.0, w = size.first, h = size.second, afterFirst = { ctrl?.play() })
         }
         app.audio.stop()
     }

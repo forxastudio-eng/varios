@@ -23,7 +23,7 @@ import java.awt.Dimension
 
 fun main() = application {
     val app = remember { PianoApp() }
-    val state = rememberWindowState(size = DpSize(1366.dp, 860.dp), position = WindowPosition(Alignment.Center))
+    val state = rememberWindowState(placement = WindowPlacement.Maximized, size = DpSize(1366.dp, 860.dp), position = WindowPosition(Alignment.Center))
     LaunchedEffect(Unit) { app.audio.start(); MidiRouter.start() }
     Window(
         onCloseRequest = { app.audio.release(); exitApplication() },

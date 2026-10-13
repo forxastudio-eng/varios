@@ -104,6 +104,10 @@ class PianoState {
     var staticLeft: Float = -1f
     var highlight: IntArray = IntArray(0)
     var showLabelsOverride: KeyLetters? = null
+    /** Octava a la que suenan las teclas del ordenador (4 → A = Do4) y si se dibuja la guía sobre el piano. */
+    var pcOctave = 4
+    var pcHints = false
+    val pcBase: Int get() = 12 * (pcOctave + 1)
 
     var width = 0f
         set(v) { if (field != v) { field = v; rebuild = true } }
@@ -179,20 +183,11 @@ class PianoState {
             val kbH = h * 0.92f
             rows.add(RowGeom(reducedRow(0f, h - kbH, w, kbH, bw), 0f, 0f))
         } else if (layoutMode != LayoutMode.REDUCED) {
-            val (low, high) = if (layoutMode == LayoutMode.TWO_ROWS && fitMin >= 0 && fitMax >= fitMin) {
-                KeyboardPlanner.twoRowsFit(fitMin, fitMax).let { it.first to it.second }
-            } else KeyboardPlanner.twoRows(split)
+            // el piano entero (A0–C8) en una sola fila a todo el ancho de la ventana
             val top = dp(54f)
-            val bottomMargin = dp(10f)
-            val avail = h - top - bottomMargin
-            val kb = min(avail * 0.235f * hs, avail * 0.36f)
-            val gap = dp(6f)
-            val wf = (avail - 2f * kb - gap) / 2f
-            val hiY = top + wf
-            val loWfTop = hiY + kb + gap
-            val loY = loWfTop + wf
-            rows.add(RowGeom(KeyRow(high.lo, high.hi, 0f, hiY, w, kb, bw, 0.62f), top, hiY))
-            rows.add(RowGeom(KeyRow(low.lo, low.hi, 0f, loY, w, kb, bw, 0.62f), loWfTop, loY))
+            val kbH = min(h * 0.27f * hs, dp(300f))
+            val wfBottom = h - kbH - dp(6f)
+            rows.add(RowGeom(KeyRow(Notes.MIN, Notes.MAX, 0f, wfBottom + dp(6f), w, kbH, bw, 0.62f), top, wfBottom))
         } else {
             val kbH = h * 0.30f * hs
             val top = dp(54f)
@@ -302,6 +297,9 @@ class PianoState {
             drawKeyboard(s, tm, r)
         }
         if (!keyboardOnly && layoutMode == LayoutMode.REDUCED) drawMiniMap(s, pos, src)
+        if (pcHints && !keyboardOnly) with(s) {
+            label(tm, "Teclado del ordenador: A–L tocan desde ${Notes.nameWithOctave(pcBase)} · Z / X cambian de octava", width - dp(250f), dp(66f), dp(12f), 0xFF8A8A94.toInt(), bold = false)
+        }
     }
 
     private fun col(c: Int) = Color(c)
@@ -488,12 +486,13 @@ class PianoState {
                 rect(0x14000000, rc.left, rc.bottom - dp(6f), rc.right - gap, rc.bottom - dp(5f))
                 if (showKeyLetters != KeyLetters.NONE) {
                     val isC = pit % 12 == 0
-                    if (showKeyLetters == KeyLetters.ALL || isC) {
+                    if ((showKeyLetters == KeyLetters.ALL && rc.width >= dp(34f)) || isC) {
                         val c = if (lv > 0.4f) 0xFF111116.toInt() else if (isC) 0xFF4A4A55.toInt() else 0xFF8A8A94.toInt()
                         val size = min(rc.width * 0.34f, dp(17f))
                         label(tm, if (isC) octNames[pit] else names[pit], rc.centerX - gap / 2f, rc.bottom - dp(12f) - sink - size * 0.35f, size, c)
                     }
                 }
+                pcChip(this, tm, pit, rc.centerX - gap / 2f, rc.bottom - dp(66f) - sink)
                 if (pit == Notes.MIDDLE_C) {
                     drawCircle(col(Palette.withAlpha(Palette.RIGHT, 0.9f)), dp(3.2f), Offset(rc.centerX - gap / 2f, rc.bottom - dp(34f) - sink))
                 }
@@ -518,7 +517,20 @@ class PianoState {
                 } else {
                     rect(0x14FFFFFF, rc.left + dp(2f), rc.top, rc.left + dp(3.5f), rc.bottom - dp(8f))
                 }
+                pcChip(this, tm, pit, rc.centerX, rc.bottom - dp(24f))
             }
+        }
+    }
+
+    /** Letra del teclado del ordenador sobre la tecla que toca (solo en la zona que esas teclas alcanzan). */
+    private fun pcChip(s: DrawScope, tm: TextMeasurer, pit: Int, cx: Float, cy: Float) {
+        if (!pcHints) return
+        val l = PcKeys.label(pit - pcBase) ?: return
+        with(s) {
+            val side = dp(18f)
+            rrect(0xCC1D2433.toInt(), cx - side / 2f, cy - side / 2f, cx + side / 2f, cy + side / 2f, dp(5f))
+            drawRoundRect(col(Palette.withAlpha(Palette.RIGHT, 0.8f)), Offset(cx - side / 2f, cy - side / 2f), Size(side, side), CornerRadius(dp(5f)), style = Stroke(dp(1f)))
+            label(tm, l, cx, cy, dp(12f), 0xFFFFFFFF.toInt())
         }
     }
 
@@ -680,17 +692,20 @@ class PianoState {
     }
 }
 
-/** Correspondencia teclado del PC → nota (dos filas, como en cualquier piano virtual). */
+/**
+ * Teclado del ordenador al estilo «escritura musical»: la fila de en medio (donde descansan los dedos) son las teclas
+ * blancas y la fila de arriba las negras, justo encima, como en un piano. Z / X (o ← →) bajan y suben una octava.
+ */
 object PcKeys {
-    private val map: Map<Key, Int> = buildMap {
-        // fila inferior: Z S X D C V G B H N J M , L . ; /
-        val low = listOf(Key.Z, Key.S, Key.X, Key.D, Key.C, Key.V, Key.G, Key.B, Key.H, Key.N, Key.J, Key.M, Key.Comma, Key.L, Key.Period, Key.Semicolon, Key.Slash)
-        low.forEachIndexed { i, k -> put(k, i) }
-        // fila superior: Q 2 W 3 E R 5 T 6 Y 7 U I 9 O 0 P
-        val up = listOf(Key.Q, Key.Two, Key.W, Key.Three, Key.E, Key.R, Key.Five, Key.T, Key.Six, Key.Y, Key.Seven, Key.U, Key.I, Key.Nine, Key.O, Key.Zero, Key.P)
-        up.forEachIndexed { i, k -> put(k, 12 + i) }
-    }
+    private val white = listOf(Key.A to 0, Key.S to 2, Key.D to 4, Key.F to 5, Key.G to 7, Key.H to 9, Key.J to 11, Key.K to 12, Key.L to 14)
+    private val black = listOf(Key.W to 1, Key.E to 3, Key.T to 6, Key.Y to 8, Key.U to 10, Key.O to 13, Key.P to 15)
+    private val map: Map<Key, Int> = (white + black).toMap()
+    private val labels: Map<Int, String> = mapOf(
+        0 to "A", 2 to "S", 4 to "D", 5 to "F", 7 to "G", 9 to "H", 11 to "J", 12 to "K", 14 to "L",
+        1 to "W", 3 to "E", 6 to "T", 8 to "Y", 10 to "U", 13 to "O", 15 to "P",
+    )
     fun offset(k: Key): Int? = map[k]
+    fun label(offset: Int): String? = labels[offset]
 }
 
 @Composable
@@ -699,6 +714,7 @@ fun PianoView(
     modifier: Modifier = Modifier,
     onSpace: ((Boolean) -> Unit)? = null,
     onEnter: (() -> Unit)? = null,
+    onRestart: (() -> Unit)? = null,
 ) {
     val density = LocalDensity.current.density
     state.density = density
@@ -707,7 +723,6 @@ fun PianoView(
     val focus = remember { FocusRequester() }
     val slots = remember { HashMap<Long, Int>() }
     val pcDown = remember { HashMap<Key, Int>() }
-    var octave by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(state) {
         while (true) {
@@ -729,12 +744,13 @@ fun PianoView(
                 when {
                     k == Key.Spacebar -> { onSpace?.invoke(e.type == KeyEventType.KeyDown); onSpace != null }
                     k == Key.Enter && e.type == KeyEventType.KeyDown -> { onEnter?.invoke(); onEnter != null }
-                    k == Key.DirectionLeft && e.type == KeyEventType.KeyDown -> { octave = (octave - 1).coerceAtLeast(-3); true }
-                    k == Key.DirectionRight && e.type == KeyEventType.KeyDown -> { octave = (octave + 1).coerceAtMost(3); true }
+                    (k == Key.Z || k == Key.DirectionLeft) && e.type == KeyEventType.KeyDown -> { state.pcOctave = (state.pcOctave - 1).coerceAtLeast(1); true }
+                    (k == Key.X || k == Key.DirectionRight) && e.type == KeyEventType.KeyDown -> { state.pcOctave = (state.pcOctave + 1).coerceAtMost(6); true }
+                    k == Key.R && e.type == KeyEventType.KeyDown && onRestart != null -> { onRestart(); true }
                     PcKeys.offset(k) != null -> {
                         if (e.type == KeyEventType.KeyDown) {
                             if (k !in pcDown) {
-                                val pitch = (60 + octave.toInt() * 12 + PcKeys.offset(k)!!).coerceIn(21, 108)
+                                val pitch = (state.pcBase + PcKeys.offset(k)!!).coerceIn(21, 108)
                                 pcDown[k] = pitch
                                 state.externalDown(pitch, 0)
                             }
