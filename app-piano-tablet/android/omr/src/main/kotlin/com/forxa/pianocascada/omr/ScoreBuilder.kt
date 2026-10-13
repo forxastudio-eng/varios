@@ -20,7 +20,10 @@ object ScoreBuilder {
 
     private class VoiceParse(
         val events: List<Ev>, val measureDurations: List<Frac>, val timeDenominator: Int?, val fifths: Int?,
-    )
+    ) {
+        /** Compases con al menos una nota (los de solo silencios no sirven para medir el compás). */
+        val noteMeasures: Set<Int> = events.map { it.measure }.toSet()
+    }
 
     private val STEP = mapOf('C' to 0, 'D' to 2, 'E' to 4, 'F' to 5, 'G' to 7, 'A' to 9, 'B' to 11)
     private val LIFT = mapOf("#" to 1, "##" to 2, "b" to -1, "bb" to -2, "N" to 0)
@@ -111,7 +114,7 @@ object ScoreBuilder {
 
         // compás: denominador del símbolo de compás y duración típica de los compases
         val allParses = systems.flatMap { s -> s.lines.map { it.parse } }
-        val allDurations = allParses.flatMap { it.measureDurations }.filter { it > Frac.ZERO }
+        val allDurations = allParses.flatMap { p -> p.measureDurations.filterIndexed { i, _ -> i in p.noteMeasures } }.filter { it > Frac.ZERO }
         if (allDurations.isEmpty()) throw OmrException("No se ha encontrado música en la partitura")
         val typical = median(allDurations)
         val den = allParses.firstNotNullOfOrNull { it.timeDenominator } ?: 4
@@ -156,7 +159,7 @@ object ScoreBuilder {
                     val expected = if (global == 0 && pickup > Frac.ZERO) pickup else nominal
                     val last = si == systems.size - 1 && mi == line.parse.measureDurations.size - 1
                     val splitBar = (mi == 0 && continued[si]) || (mi == line.parse.measureDurations.size - 1 && si + 1 < systems.size && continued[si + 1])
-                    if (d != expected && d > Frac.ZERO && !(last && d < expected) && !splitBar) {
+                    if (mi in line.parse.noteMeasures && d != expected && d > Frac.ZERO && !(last && d < expected) && !splitBar) {
                         if (irregular++ < 8) warnings.add("Compás ${global + 1} (pentagrama ${li + 1}): dura ${fmt(d)} y debería durar ${fmt(expected)}. Revisa esa parte.")
                     }
                 }
