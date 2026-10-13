@@ -110,6 +110,23 @@ class ImportController(private val app: PianoApp) {
         }
     }
 
+    // ------------------------------------------------------------------ canción ya preparada (.json de Piano Cascada), sin internet
+    fun importSongFile(uri: Uri) {
+        val title = displayName(uri)
+        state = ImportState.Working(0.3f, "Leyendo la canción…", title)
+        exec.execute {
+            try {
+                val text = app.contentResolver.openInputStream(uri)!!.use { String(it.readBytes(), Charsets.UTF_8) }
+                val parsed = runCatching { SongLibrary.parse(text).firstOrNull() }.getOrNull()
+                    ?: throw NoNotes("Este archivo no es una canción de Piano Cascada.")
+                val name = parsed.title.ifBlank { title }
+                val song = parsed.copy(id = slug(name), title = name, source = SongSource.PDF)
+                if (song.notes(3).isEmpty()) throw NoNotes("La canción no contiene notas.")
+                state = ImportState.Review(name, song, null, 0f, emptyList(), "${song.notes(3).size} notas · ${song.bars} compases · ${song.meter} · ${com.forxa.pianocascada.core.Transposer.displayKey(song.key)}")
+            } catch (e: Throwable) { fail(e) }
+        }
+    }
+
     // ------------------------------------------------------------------ partitura (PDF / foto) mediante el servidor
     fun importScore(uri: Uri, serverUrl: String) {
         val title = displayName(uri)

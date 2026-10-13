@@ -65,6 +65,7 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
         if (uri != null) ctl.importScore(uri, settings.serverUrl)
     }
     val midiPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ctl.importMidi(uri) }
+    val songPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) ctl.importSongFile(uri) }
 
     Column(Modifier.fillMaxSize().background(PC.bg).padding(horizontal = 48.dp, vertical = 32.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -78,6 +79,7 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
                 onAudio = { audioPicker.launch(arrayOf("audio/*")) },
                 onScore = { if (settings.serverUrl.isBlank()) avisoServidor = true else scorePicker.launch(arrayOf("application/pdf", "image/*")) },
                 onMidi = { midiPicker.launch(arrayOf("*/*")) },
+                onSong = { songPicker.launch(arrayOf("*/*")) },
             )
             is ImportState.Working -> WorkingView(state, onCancel = { ctl.cancel() })
             is ImportState.Review -> ReviewView(app, settings, ctl, state, onSaved = onImported)
@@ -93,7 +95,7 @@ fun ImportScreen(app: PianoApp, settings: Settings, onBack: () -> Unit, onImport
 }
 
 @Composable
-private fun IdleView(app: PianoApp, settings: Settings, avisoServidor: Boolean, onAudio: () -> Unit, onScore: () -> Unit, onMidi: () -> Unit) {
+private fun IdleView(app: PianoApp, settings: Settings, avisoServidor: Boolean, onAudio: () -> Unit, onScore: () -> Unit, onMidi: () -> Unit, onSong: () -> Unit) {
     var url by remember { mutableStateOf(settings.serverUrl) }
     var test by remember { mutableStateOf("") }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -102,6 +104,7 @@ private fun IdleView(app: PianoApp, settings: Settings, avisoServidor: Boolean, 
             OptionCard(G.WAVE, "Audio: MP3, M4A, WAV…", "Convierte una grabación en notas que caen. Funciona mejor con piano solo, y tarda unos segundos por cada minuto de música.", "Elegir un audio", onAudio, PC.right)
             OptionCard(G.FILE, "Partitura en PDF o foto", "Lee la partitura con reconocimiento óptico musical. Necesita el programa «servidor» abierto en un ordenador de tu casa (instrucciones a la derecha).", "Elegir PDF o foto", onScore, PC.left)
             OptionCard(G.NOTE, "Archivo MIDI", "Importación exacta de un .mid, con las dos manos si el archivo las trae separadas. Ideal para obras como el «Claro de luna».", "Elegir un MIDI", onMidi, PC.ok)
+            OptionCard(G.FILE, "Canción preparada (.json)", "Una canción ya leída y revisada de una partitura (voz y piano, con los tres niveles). Funciona sin internet ni servidor.", "Elegir el archivo", onSong, PC.right)
         }
         Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
             SectionTitle("Servidor en casa (para PDF y fotos)")

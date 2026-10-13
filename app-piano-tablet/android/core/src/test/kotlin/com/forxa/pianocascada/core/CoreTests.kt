@@ -415,3 +415,20 @@ class TouchTest {
         assertEquals(0.6f, VelocityMapper.strengthFromContact(0.3f, 0.3f, 0.3f), 1e-6f)
     }
 }
+
+/** Comprueba un archivo de canción preparada (.json) indicado en PIANO_EXTRA_SONG; sin la variable no hace nada. */
+class ExtraSongFileTest {
+    @Test fun preparedSongFileIsPlayable() {
+        val path = System.getenv("PIANO_EXTRA_SONG") ?: return
+        val songs = SongLibrary.parse(File(path).readText())
+        assertTrue(songs.isNotEmpty())
+        for (s in songs) {
+            for (level in 1..3) assertTrue(s.notes(level).isNotEmpty(), "${s.id}: el nivel $level está vacío")
+            for (n in s.rh + s.lh + s.bass + (s.melody ?: emptyList())) {
+                assertTrue(n.pitch in Notes.MIN..Notes.MAX && n.dur > 0f && n.start >= 0f, "${s.id}: nota inválida")
+                assertTrue(n.end <= s.totalBeats + 0.01f, "${s.id}: nota más allá del final")
+            }
+            assertEquals(s.bars, s.barStarts.size)
+        }
+    }
+}
