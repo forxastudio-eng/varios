@@ -13,7 +13,7 @@ java {
 }
 
 // En el sandbox de desarrollo Maven Central a veces limita las descargas: OMR_OPENCV_JAR apunta a un JAR ya descargado.
-val openCv: Any = System.getenv("OMR_OPENCV_JAR")?.let { files(it) } ?: "org.openpnp:opencv:4.5.5-1"
+val openCv: Any = System.getenv("OMR_OPENCV_JAR")?.let { files(it) } ?: "org.openpnp:opencv:4.9.0-0"
 
 dependencies {
     api(project(":core"))

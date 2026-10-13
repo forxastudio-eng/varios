@@ -83,10 +83,12 @@ class SongRepository(private val context: Context) {
 
     fun load() {
         val bundled = context.assets.open("songs.json").bufferedReader().use { SongLibrary.parse(it.readText()) }
+        // canciones extra del propietario de la app (opcional): si el archivo no existe, no se añade nada
+        val extra = runCatching { context.assets.open("songs_extra.json").bufferedReader().use { SongLibrary.parse(it.readText()) } }.getOrDefault(emptyList())
         val user = userDir.listFiles { f -> f.extension == "json" }?.sortedBy { it.name }?.mapNotNull { f ->
             runCatching { SongLibrary.parse(f.readText()) }.getOrNull()
         }?.flatten().orEmpty().mapIndexed { i, s -> s.copy(order = 1000 + i) }
-        _songs.value = bundled + user
+        _songs.value = bundled + extra + user
     }
 
     fun find(id: String): Song? = _songs.value.firstOrNull { it.id == id }
