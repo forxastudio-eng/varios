@@ -15,7 +15,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
-        ndk { abiFilters += listOf("arm64-v8a") }   // Galaxy Tab S8 Ultra = arm64
+        // Galaxy Tab S8 Ultra = arm64; el emulador de las pruebas (-PemulatorAbi) usa x86_64
+        ndk { abiFilters += listOf("arm64-v8a") + (if (project.hasProperty("emulatorAbi")) listOf("x86_64") else emptyList()) }
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
     }
 
@@ -49,6 +51,8 @@ android {
 }
 
 dependencies {
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.1")
     implementation(project(":core"))
     implementation(project(":transcribe"))
     implementation(project(":omr"))
