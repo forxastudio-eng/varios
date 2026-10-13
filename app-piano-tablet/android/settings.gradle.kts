@@ -17,6 +17,7 @@ rootProject.name = "PianoCascada"
 include(":core")
 include(":transcribe")
 include(":omr")
+include(":engine")
 // En entornos sin acceso a Google Maven (p. ej. el sandbox de desarrollo) se puede probar solo la lógica pura:
 //   PIANO_CORE_ONLY=1 ./gradlew :core:test
 if (System.getenv("PIANO_CORE_ONLY") == null) {

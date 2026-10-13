@@ -1,0 +1,54 @@
+# Escenario de comparación: notas sueltas, pedal, ecualizador, reverb y secuenciador con puerta, bucle y velocidad
+param 6 0.22
+param 1 3.0
+param 2 -2.0
+param 3 1.5
+param 4 2.5
+param 5 -3.0
+param 0 0.8
+noteon 60 80
+render 4800
+noteon 64 100
+noteon 67 60
+render 9600
+pedal 1
+noteoff 60
+render 4800
+noteon 36 110
+noteon 96 90
+render 14400
+pedal 0
+render 9600
+noteoff 64
+noteoff 67
+render 4800
+alloff
+render 4800
+seqload 8
+60 90 0 0 400
+64 80 0 400 400
+67 85 0 800 800
+48 70 1 0 1600
+55 70 1 800 800
+72 100 0 1600 300
+76 95 0 1900 300
+79 110 0 2200 600
+handgain 1 0.7
+seqspeed 0.8
+seqplay 1
+render 48000
+seqgate 1700
+render 24000
+seqgate 100000
+render 24000
+seqloop 800 2000 1
+render 72000
+seqseek 200
+render 12000
+seqplay 0
+seqstop
+render 24000
+param 13 1
+param 9 442
+noteon 69 100
+render 24000
