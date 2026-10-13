@@ -1,0 +1,150 @@
+name: Compilar Piano Cascada para el ordenador
+
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "app-piano-tablet/android/desktop/**"
+      - "app-piano-tablet/android/engine/**"
+      - "app-piano-tablet/android/core/**"
+      - "app-piano-tablet/android/omr/**"
+      - "app-piano-tablet/android/transcribe/**"
+      - "app-piano-tablet/android/app/src/main/assets/**"
+      - "app-piano-tablet/android/*.kts"
+      - ".github/workflows/escritorio.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: escritorio-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIANO_CORE_ONLY: "1"      # sin el plugin de Android: aquí solo se compila la parte del ordenador
+
+jobs:
+  modelos:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Descargar los modelos del lector de partituras
+        run: app-piano-tablet/tools/descargar_modelos_omr.sh "$PWD/modelos"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modelos-omr
+          path: modelos/*.onnx
+          retention-days: 1
+
+  vista:
+    needs: modelos
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: app-piano-tablet/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Bibliotecas gráficas para dibujar sin pantalla
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1 libfontconfig1 fonts-dejavu-core libxtst6 libasound2t64
+      - uses: actions/download-artifact@v4
+        with:
+          name: modelos-omr
+          path: app-piano-tablet/android/app/src/main/assets/omr
+      - name: Capturas de todas las pantallas (la interfaz se dibuja de verdad)
+        run: xvfb-run -a ./gradlew :desktop:test --no-daemon --console=plain
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capturas-escritorio
+          path: app-piano-tablet/android/desktop/build/preview/*.png
+      - name: Publicar las capturas
+        if: always() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd desktop/build/preview 2>/dev/null || exit 0
+          ls *.png >/dev/null 2>&1 || exit 0
+          gh release create "preview-escritorio-${{ github.run_number }}" *.png \
+            --title "Capturas de escritorio ${{ github.run_number }}" --notes "Capturas automáticas." \
+            --prerelease --target "${{ github.sha }}"
+          gh release list --limit 50 --json tagName,createdAt --jq 'map(select(.tagName | startswith("preview-escritorio-"))) | sort_by(.createdAt) | reverse | .[2:] | .[].tagName' \
+            | while read -r tag; do gh release delete "$tag" --yes --cleanup-tag || true; done
+
+  paquete:
+    needs: modelos
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, nombre: Windows }
+          - { os: macos-latest, nombre: Mac }
+          - { os: ubuntu-24.04, nombre: Linux }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: app-piano-tablet/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: modelos-omr
+          path: app-piano-tablet/android/app/src/main/assets/omr
+      - name: Crear la aplicación (con Java incluido) y el instalador
+        run: ./gradlew :desktop:createDistributable :desktop:packageDistributionForCurrentOS --no-daemon --console=plain
+      - name: Empaquetar
+        run: |
+          B=desktop/build/compose/binaries/main
+          mkdir -p ../../salida
+          case "${{ matrix.nombre }}" in
+            Windows)
+              powershell -NoProfile -Command "Compress-Archive -Path '$B/app/PianoCascada' -DestinationPath '../../salida/PianoCascada-Windows.zip'"
+              cp $B/msi/*.msi ../../salida/PianoCascada-Windows.msi ;;
+            Mac)
+              ditto -c -k --keepParent "$B/app/PianoCascada.app" ../../salida/PianoCascada-Mac.zip
+              cp $B/dmg/*.dmg ../../salida/PianoCascada-Mac.dmg ;;
+            Linux)
+              tar -C $B/app -czf ../../salida/PianoCascada-Linux.tar.gz PianoCascada
+              cp $B/deb/*.deb ../../salida/PianoCascada-Linux.deb ;;
+          esac
+          ls -la ../../salida
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paquete-${{ matrix.nombre }}
+          path: salida/*
+
+  publicar:
+    needs: paquete
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: paquete-*
+          path: salida
+          merge-multiple: true
+      - name: Publicar en Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la salida
+          gh release create "escritorio-${{ github.run_number }}" salida/* \
+            --title "Piano Cascada para ordenador · compilación ${{ github.run_number }}" \
+            --notes "Windows (zip o instalador MSI), Mac (zip o DMG) y Linux (tar.gz o DEB). Commit ${{ github.sha }}." \
+            --prerelease --target "${{ github.sha }}"
+          gh release list --limit 50 --json tagName,createdAt --jq 'map(select(.tagName | startswith("escritorio-"))) | sort_by(.createdAt) | reverse | .[3:] | .[].tagName' \
+            | while read -r tag; do gh release delete "$tag" --yes --cleanup-tag || true; done
